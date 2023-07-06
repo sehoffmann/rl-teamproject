@@ -1,0 +1,4 @@
+pkgs_dirs:
+  - $WORK2/conda/pkgs
+envs_dirs:
+  - $WORK2/conda/envs
