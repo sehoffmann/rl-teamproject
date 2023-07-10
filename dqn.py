@@ -156,7 +156,7 @@ class EMAModel(nn.Module):
     @torch.no_grad()
     def update(self, base_model):
         for param, base_param in zip(self.model.parameters(), base_model.parameters()):
-            param.data = self.momentum * base_param.data + (1 - self.momentum) * param.data
+            param.data = self.momentum * param.data + (1 - self.momentum) * base_param.data
 
 
 class NNAgent:
@@ -250,7 +250,7 @@ def prepopulate(replay_buffer, action_repeats):
         
         obs_agent1, info = env.reset(mode=mode)
         obs_agent2 = env.obs_agent_two()
-        for i in range(1000):
+        for i in range(500):
             a1 = agent1.act(obs_agent1)
             a2 = agent2.act(obs_agent2)
             r_cum = 0.0
@@ -340,13 +340,13 @@ def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20):
 def DQN():
     BS = 64
     GAMMA = 0.995
-    LR = 1e-4
+    LR = 1e-5
     ACTION_REPEATS = 3
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     tracker = Tracker()
     model = MLP([18, 64, 64, 7]).to(device)
-    ema_model = EMAModel(MLP([18, 64, 64, 7]).to(device), model, momentum=0.995)
+    ema_model = EMAModel(MLP([18, 64, 64, 7]).to(device), model, momentum=0.999)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     replay_buffer = ReplayBuffer(200000)
 
@@ -360,13 +360,7 @@ def DQN():
     model.train()
     ema_model.train()
     for game in range(30000):
-        if game < 600 and game % 2 == 0:
-            mode = lh.LaserHockeyEnv.TRAIN_SHOOTING
-        elif game < 600:
-            mode = lh.LaserHockeyEnv.TRAIN_DEFENSE
-        else:
-            mode = lh.LaserHockeyEnv.NORMAL
-
+        mode = lh.LaserHockeyEnv.NORMAL
         obs_agent1, info = env.reset(mode=mode)
         obs_agent2 = env.obs_agent_two()
         agent.reset()
@@ -374,27 +368,26 @@ def DQN():
         n_updates = 0
         Qs = []
         td_errors = []
-        for i in range(1000//ACTION_REPEATS):
+        for i in range(500//ACTION_REPEATS):
             with torch.no_grad():
                 a1 = agent.act(obs_agent1)
             a2 = opponent.act(obs_agent2)
 
-            r_cum = -(ACTION_REPEATS/1000)
+            r_cum = -(ACTION_REPEATS/500)
             for _ in range(ACTION_REPEATS):
                 obs_agent1_new, r, d, _, info = env.step(np.hstack([a1,a2]))
                 obs_agent2_new = env.obs_agent_two()
                 r_cum += r
                 if d: 
                     break
-
-            if r_cum != 0 or random.random() < 0.5:
-                sample = (obs_agent1, agent.last_action_discrete, r_cum, obs_agent1_new, d)
-                replay_buffer.add(sample)
+            
+            sample = (obs_agent1, agent.last_action_discrete, r_cum, obs_agent1_new, d)
+            replay_buffer.add(sample)
 
             obs_agent1 = obs_agent1_new
             obs_agent2 = obs_agent2_new
 
-            if  i % 1 == 0:
+            if i % 1 == 0:
                 n_updates += 1
                 optimizer.zero_grad()
 
@@ -428,6 +421,7 @@ def DQN():
         if n_updates > 0:
             tracker.add('value_f', np.mean(Qs), game)
             tracker.add('td_error', np.mean(td_errors), game)
+            tracker.add('n_updates', n_updates, game)
     
         if game % 200 == 0:
             print('N Steps:', agent.n)
