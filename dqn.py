@@ -314,7 +314,7 @@ def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20):
     states[0].save(f'game{game}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*action_repeats, loop=0)
 
     wins, draws, losses = (0,0,0)
-    for _ in range(20):
+    for _ in range(N):
         r, _ = play_game(agent, opponent, action_repeats=action_repeats, render=False)
         if r > 0:
             wins += 1
@@ -425,7 +425,7 @@ def DQN():
     
         if game % 200 == 0:
             print('N Steps:', agent.n)
-            evaluate(agent, game, tracker, ACTION_REPEATS, opponent=opponent)
+            evaluate(agent, game, tracker, ACTION_REPEATS, opponent=opponent, N=30)
 
 
 def main():
