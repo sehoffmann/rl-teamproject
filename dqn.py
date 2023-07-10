@@ -231,12 +231,12 @@ class NNAgent:
     
     def cont_to_discrete(self, action_cont):
         action = torch.zeros(action_cont.shape[0],1,dtype=torch.long, device=action_cont.device, requires_grad=False)
-        action[action_cont[:, 0] > 0.5] = 1
-        action[action_cont[:, 0] < 0.5] = 2
-        action[action_cont[:, 1] > 0.5] = 3
-        action[action_cont[:, 1] < 0.5] = 4
-        action[action_cont[:, 2] > 0.5] = 5
-        action[action_cont[:, 2] < 0.5] = 6
+        action[action_cont[:, 0] < 0.0, :] = 1
+        action[action_cont[:, 0] > 0.0, :] = 2
+        action[action_cont[:, 1] < 0.0, :] = 3
+        action[action_cont[:, 1] > 0.0, :] = 4
+        action[action_cont[:, 2] < 0.0, :] = 5
+        action[action_cont[:, 2] > 0.0, :] = 6
         return action
 
     def act(self, obs):
