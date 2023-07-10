@@ -352,12 +352,12 @@ def play_game(agent1, agent2, max_steps = 1500, render=True, action_repeats=1):
             break
     return r, states
 
-def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20):
+def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20, label='basic'):
     if opponent is None:
         opponent = lh.BasicOpponent()
 
     r, states = play_game(agent, opponent, action_repeats=action_repeats)
-    states[0].save(f'game{game}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*action_repeats, loop=0)
+    states[0].save(f'game{game}_{label}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*action_repeats, loop=0)
 
     wins, draws, losses = (0,0,0)
     for _ in range(N):
@@ -368,18 +368,22 @@ def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20):
             draws += 1
         else:
             losses += 1
-    tracker.add('win_rate', wins/N, game)
-    tracker.add('draw_rate', draws/N, game)
-    tracker.add('loss_rate', losses/N, game)
+    tracker.add(f'win_rate_{label}', wins/N, game)
+    tracker.add(f'draw_rate_{label}', draws/N, game)
+    tracker.add(f'loss_rate_{label}', losses/N, game)
 
+
+
+def save_metrics(tracker):
     tracker.save_csv('results.csv')
-    tracker.plot(['win_rate', 'draw_rate', 'loss_rate'], title='Skill')
+    tracker.plot(['win_rate_basic', 'draw_rate_basic', 'loss_rate_basic'], title='Skill vs BasicOpponent')
+    plt.ylim(0,1)
     plt.savefig('skill.png')
     plt.close()
-    tracker.plot(['value_f'], title='Avg. Value Function', smoothing=0.00)
+    tracker.plot(['value_f'], title='Avg. Value Function', smoothing=0.02)
     plt.savefig('value.png')
     plt.close()
-    tracker.plot(['td_error'], title='TD Error / Loss', smoothing=0.00)
+    tracker.plot(['td_error'], title='TD Error / Loss', smoothing=0.02)
     plt.savefig('loss.png')
     plt.close()
 
@@ -452,7 +456,7 @@ class RLGame:
             self.action_agent2 = None
 
     @torch.no_grad()
-    def step(self, agent1, agent2, action_repeats_agent1=1, action_repeats_agent2=1, horizon_agent1=1, horizon_agent2=1):
+    def step(self, agent1, agent2, action_repeats_agent1=1, action_repeats_agent2=1, horizon_agent1=1, horizon_agent2=1, save_agent1=True, save_agent2=False):
         self._reset_actions(action_repeats_agent1, action_repeats_agent2)
         action1 = self._get_and_set_action(0, agent1, horizon_agent1)
         action2 = self._get_and_set_action(1, agent2, horizon_agent2)
@@ -464,9 +468,15 @@ class RLGame:
         self.obs_agent1.append(obs_agent1)
         self.obs_agent2.append(obs_agent2)
 
-        state_0 = self._stack_state(self.obs_agent1[:-1], horizon_agent1)
-        state_1 = self._stack_state(self.obs_agent1, horizon_agent1)
-        self.replay_buffer.add(state_0, state_1, action, r, done)
+        if save_agent1:
+            state_0 = self._stack_state(self.obs_agent1[:-1], horizon_agent1)
+            state_1 = self._stack_state(self.obs_agent1, horizon_agent1)
+            self.replay_buffer.add(state_0, state_1, action1, r, done)
+        if save_agent2:
+            state_0 = self._stack_state(self.obs_agent2[:-1], horizon_agent2)
+            state_1 = self._stack_state(self.obs_agent2, horizon_agent2)
+            self.replay_buffer.add(state_0, state_1, action2, -r, done)
+        
         self.cur_step += 1
         self.total_steps += 1
 
@@ -476,26 +486,24 @@ class RLGame:
         return r, done, info
 
 def DQN():
-    BS = 64
-    GAMMA = 0.995
+    BS = 128
+    GAMMA = 0.99
     LR = 1e-4
-    ACTION_REPEATS = 3
+    ACTION_REPEATS = 2
 
     env = lh.LaserHockeyEnv() 
-    opponent = lh.BasicOpponent()
     rl_game = RLGame(env)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     tracker = Tracker()
-    model = MLP([18, 64, 64, 7]).to(device)
-    ema_model = EMAModel(MLP([18, 64, 64, 7]).to(device), model, momentum=0.999)
+    model = MLP([18, 64, 128, 7]).to(device)
+    ema_model = EMAModel(MLP([18, 64, 128, 7]).to(device), model, momentum=0.995)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     
     agent = NNAgent(model, device, action_repeats=ACTION_REPEATS)
-    
-    #prepopulate(replay_buffer, ACTION_REPEATS)
-    #print(len(replay_buffer.buffer))
-    
+    agent_ema = NNAgent(ema_model, device, action_repeats=ACTION_REPEATS, min_epsilon=0.00, epsilon=0.00)
+    basic_opponent = lh.BasicOpponent()
+
     model.train()
     ema_model.train()
     for game in range(30000):        
@@ -503,9 +511,11 @@ def DQN():
         Qs = []
         td_errors = []
         done = False
+        opponent = basic_opponent #if random.random() < 0.5 else agent_ema
+        agent.n = rl_game.total_steps
         while not done:
             _, done, _ = rl_game.step(agent, opponent, action_repeats_agent1=ACTION_REPEATS)
-            if len(rl_game.replay_buffer) > 10000 and rl_game.total_steps % 4 == 0:
+            if len(rl_game.replay_buffer) > 20000 and rl_game.total_steps % 8 == 0:
                 n_updates += 1
                 optimizer.zero_grad()
 
@@ -522,17 +532,6 @@ def DQN():
                 Q_next_max = torch.max(Q_next, dim=1, keepdim=True)[0]
                 Q_target = reward[:, None] + GAMMA * Q_next_max * (1 - d[:, None])
 
-                """
-                print('action', action.shape)
-                print('Q', Q.shape)
-                print('Q_next', Q_next.shape)
-                print('Q_next_max', Q_next_max.shape)
-                print('Q_target', Q_target.shape)
-                print('r', reward.shape)
-                print('Qgather', Q.gather(1, action).shape)
-                print('d', d.shape)
-                print('-'*30)"""
-
                 loss = torch.mean((Q_target - Q.gather(1, action)) ** 2)
                 loss.backward()
                 optimizer.step()
@@ -547,10 +546,14 @@ def DQN():
             tracker.add('td_error', np.mean(td_errors), game)
             tracker.add('n_updates', n_updates, game)
     
-        if game % 200 == 0 and game > 0:
-            print('N Steps:', agent.n)
-            evaluate(agent, game, tracker, ACTION_REPEATS, opponent=opponent, N=30)
-
+        if game % 100 == 0 and game > 0:
+            print('N Steps:', rl_game.total_steps)
+            evaluate(agent_ema, game, tracker, ACTION_REPEATS, opponent=basic_opponent, N=50)
+            _, states = play_game(agent, agent, action_repeats=ACTION_REPEATS)
+            states[0].save(f'game{game}_self.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*ACTION_REPEATS, loop=0)
+            _, states = play_game(agent_ema, agent_ema, action_repeats=ACTION_REPEATS)
+            states[0].save(f'game{game}_ema.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*ACTION_REPEATS, loop=0)
+            save_metrics(tracker)
 
 def main():
     env = lh.LaserHockeyEnv(mode=lh.LaserHockeyEnv.TRAIN_SHOOTING)
