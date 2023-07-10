@@ -8,6 +8,8 @@ import laserhockey.laser_hockey_env as lh
 import pandas as pd
 from laserhockey.hockey_env import HumanOpponent
 from PIL import Image
+import pandas as pd
+import matplotlib.pyplot as plt
 
 """
 The Environment:
@@ -108,9 +110,9 @@ class MLPLayer(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.linear = nn.Linear(in_channels, out_channels, bias=False)
+        self.linear = nn.Linear(in_channels, out_channels, bias=True)
         self.act = activation()
-        self.norm = norm_layer(out_channels)
+        self.norm = nn.Identity()#norm_layer(out_channels)
 
     def forward(self, x):
         return self.act(self.norm(self.linear(x)))
@@ -145,7 +147,7 @@ class EMAModel(nn.Module):
         for param, base_param in zip(self.model.parameters(), base_model.parameters()):
             param.data = base_param.data
 
-        self.model.requires_grad_(True)
+        self.model.requires_grad_(False)
 
     @torch.no_grad()
     def forward(self, *args, **kwargs):
@@ -159,70 +161,83 @@ class EMAModel(nn.Module):
 
 class NNAgent:
 
-    def __init__(self, module, device, action_repeats = 1):
+    def __init__(self, module, device, action_repeats = 1, epsilon=0.8, epsilon_decay=1e-6, min_epsilon=0.1, max_sampling=False):
         self.module = module
         self.device = device
         self.action_repeats = action_repeats
         self.last_action = None
         self.last_action_discrete = None
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.min_epsilon = min_epsilon
+        self.max_sampling = max_sampling
         self.n = 0
+
+    def _choose_action(self, Q):
+        if self.max_sampling:
+            action = torch.argmax(Q)
+        else:
+            p = torch.softmax(Q, dim=-1)
+            action = torch.multinomial(p, 1).squeeze(-1)
+
+        p = np.random.rand()
+        threshold = self.epsilon - self.epsilon_decay*self.n
+        threshold = max(threshold, self.min_epsilon)
+        if self.module.training and p < threshold:
+            action = torch.randint(0, 7, ())
+        return action.detach().cpu().numpy()
+
+    def _action_to_cont(self, action):
+        action_cont = [(action == 1) * -1 + (action == 2) * 1,  # player x
+                    (action == 3) * -1 + (action == 4) * 1,  # player y
+                    (action == 5) * -1 + (action == 6) * 1]  # player angle
+        return action_cont
 
     def act(self, obs):
         obs = normalize_(obs)
         obs = torch.from_numpy(obs).float().to(self.device)
         Q = self.module(obs)
-        action = torch.argmax(Q)
-        if self.module.training and np.random.rand() < max(0.1, 0.8 - 0.8*self.n / 1e6):
-            action = torch.randint(0, 7, ())
-        action = action.detach().cpu().numpy()
-        action_cont = [(action == 1) * -1 + (action == 2) * 1,  # player x
-                    (action == 3) * -1 + (action == 4) * 1,  # player y
-                    (action == 5) * -1 + (action == 6) * 1]  # player angle
-        self.last_action = action_cont
+        action = self._choose_action(Q)
         self.last_action_discrete = action
+        self.last_action = self._action_to_cont(action)
         self.n += 1
         return self.last_action
 
     def reset(self):
         self.last_action = None
 
-@torch.no_grad()
-def play_game(env, agent1, agent2, max_steps = 1500, render=True, action_repeats=1):
-    obs_agent1, info = env.reset()
-    obs_agent2 = env.obs_agent_two()
-    states = []
-    for _ in range(max_steps):
-        if render:
-            states.append(Image.fromarray(env.render('rgb_array')))
-        a1 = agent1.act(obs_agent1)
-        a2 = agent2.act(obs_agent2)
-        r_cum = 0
-        for _ in range(action_repeats):
-            obs_agent1, r, d, _, info = env.step(np.hstack([a1,a2]))
-            obs_agent2 = env.obs_agent_two()
-            r_cum += r
-            if d:
-                break
-        if d: 
-            break
-    return r, states
 
-def DQN():
-    BS = 64
-    GAMMA = 0.995
-    LR = 1e-4
-    ACTION_REPEATS = 3
+class Tracker:
+    def __init__(self):
+        self.values = {}
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = MLP([18, 64, 64, 7]).to(device)
-    ema_model = EMAModel(MLP([18, 64, 64, 7]).to(device), model, momentum=0.9999) #
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    replay_buffer = ReplayBuffer(200000)
+    def add(self, key, value, step):
+        if key not in self.values:
+            self.values[key] = []
+        self.values[key].append((step, value))
 
+    def save_csv(self, path):
+        df = pd.DataFrame()
+        for key in self.values:
+            df[key] = pd.Series([v[1] for v in self.values[key]], [v[0] for v in self.values[key]])
+        df.to_csv(path)
+
+    def plot(self, keys, title=None, smoothing=0.0):
+        fig = plt.figure(figsize=(12,6))
+        for key in keys:
+            x = [v[0] for v in self.values[key]]
+            vals = [v[1] for v in self.values[key]]
+            if smoothing > 0:
+                vals = pd.Series(vals).ewm(alpha=1-smoothing).mean()
+            plt.plot(x, vals, label=key)
+        plt.legend()
+        plt.title(title)
+        return fig
+
+def prepopulate(replay_buffer, action_repeats):
     env = lh.LaserHockeyEnv()
-    agent1 = NNAgent(model, device, action_repeats=ACTION_REPEATS)
+    agent1 = lh.BasicOpponent()
     agent2 = lh.BasicOpponent()
-    agent_bootstrap = lh.BasicOpponent()
 
     # Prepopulate replay buffer
     for game in range(100):
@@ -236,10 +251,10 @@ def DQN():
         obs_agent1, info = env.reset(mode=mode)
         obs_agent2 = env.obs_agent_two()
         for i in range(1000):
-            a1 = agent_bootstrap.act(obs_agent1)
+            a1 = agent1.act(obs_agent1)
             a2 = agent2.act(obs_agent2)
             r_cum = 0.0
-            for _ in range(ACTION_REPEATS):
+            for _ in range(action_repeats):
                 obs_agent1_new, r, d, _, info = env.step(np.hstack([a1,a2]))
                 obs_agent2_new = env.obs_agent_two()
                 r_cum += r
@@ -260,7 +275,6 @@ def DQN():
             if y_backward: action = 3
             if y_forward: action = 4
 
-            r_cum -= 0.2
             sample = (obs_agent1, action, r_cum, obs_agent1_new, d)
             replay_buffer.add(sample)
 
@@ -270,6 +284,77 @@ def DQN():
             if d:
                 break
 
+@torch.no_grad()
+def play_game(agent1, agent2, max_steps = 1500, render=True, action_repeats=1):
+    env = lh.LaserHockeyEnv()
+    obs_agent1, info = env.reset()
+    obs_agent2 = env.obs_agent_two()
+    states = []
+    for _ in range(max_steps):
+        if render:
+            states.append(Image.fromarray(env.render('rgb_array')))
+        a1 = agent1.act(obs_agent1)
+        a2 = agent2.act(obs_agent2)
+        r_cum = 0
+        for _ in range(action_repeats):
+            obs_agent1, r, d, _, info = env.step(np.hstack([a1,a2]))
+            obs_agent2 = env.obs_agent_two()
+            r_cum += r
+            if d:
+                break
+        if d: 
+            break
+    return r, states
+
+def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20):
+    if opponent is None:
+        opponent = lh.BasicOpponent()
+
+    r, states = play_game(agent, opponent, action_repeats=action_repeats)
+    states[0].save(f'game{game}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*action_repeats, loop=0)
+
+    wins, draws, losses = (0,0,0)
+    for _ in range(20):
+        r, _ = play_game(agent, opponent, action_repeats=action_repeats, render=False)
+        if r > 0:
+            wins += 1
+        elif r == 0:
+            draws += 1
+        else:
+            losses += 1
+    tracker.add('win_rate', wins/N, game)
+    tracker.add('draw_rate', draws/N, game)
+    tracker.add('loss_rate', losses/N, game)
+
+    tracker.save_csv('results.csv')
+    tracker.plot(['win_rate', 'draw_rate', 'loss_rate'], title='Skill')
+    plt.savefig('skill.png')
+    plt.close()
+    tracker.plot(['value_f'], title='Avg. Value Function', smoothing=0.00)
+    plt.savefig('value.png')
+    plt.close()
+    tracker.plot(['td_error'], title='TD Error / Loss', smoothing=0.00)
+    plt.savefig('loss.png')
+    plt.close()
+
+def DQN():
+    BS = 64
+    GAMMA = 0.995
+    LR = 1e-4
+    ACTION_REPEATS = 3
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    tracker = Tracker()
+    model = MLP([18, 64, 64, 7]).to(device)
+    ema_model = EMAModel(MLP([18, 64, 64, 7]).to(device), model, momentum=0.995)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    replay_buffer = ReplayBuffer(200000)
+
+    env = lh.LaserHockeyEnv()
+    agent = NNAgent(model, device, action_repeats=ACTION_REPEATS)
+    opponent = lh.BasicOpponent()
+
+    prepopulate(replay_buffer, ACTION_REPEATS)
     print(len(replay_buffer.buffer))
     
     model.train()
@@ -281,17 +366,20 @@ def DQN():
             mode = lh.LaserHockeyEnv.TRAIN_DEFENSE
         else:
             mode = lh.LaserHockeyEnv.NORMAL
-        print(f'Game {game}')
+
         obs_agent1, info = env.reset(mode=mode)
         obs_agent2 = env.obs_agent_two()
-        agent1.reset()
+        agent.reset()
+        
+        n_updates = 0
         Qs = []
-        for i in range(1000):
+        td_errors = []
+        for i in range(1000//ACTION_REPEATS):
             with torch.no_grad():
-                a1 = agent1.act(obs_agent1)
-            a2 = agent2.act(obs_agent2)
+                a1 = agent.act(obs_agent1)
+            a2 = opponent.act(obs_agent2)
 
-            r_cum = 0.0
+            r_cum = -(ACTION_REPEATS/1000)
             for _ in range(ACTION_REPEATS):
                 obs_agent1_new, r, d, _, info = env.step(np.hstack([a1,a2]))
                 obs_agent2_new = env.obs_agent_two()
@@ -299,15 +387,15 @@ def DQN():
                 if d: 
                     break
 
-            r_cum -= 0.01
-            if r_cum != 0 or random.random() < 0.05:
-                sample = (obs_agent1, agent1.last_action_discrete, r_cum, obs_agent1_new, d)
+            if r_cum != 0 or random.random() < 0.5:
+                sample = (obs_agent1, agent.last_action_discrete, r_cum, obs_agent1_new, d)
                 replay_buffer.add(sample)
 
             obs_agent1 = obs_agent1_new
             obs_agent2 = obs_agent2_new
 
-            if len(replay_buffer.buffer) > 500 and i % 1 == 0:
+            if  i % 1 == 0:
+                n_updates += 1
                 optimizer.zero_grad()
 
                 batch = replay_buffer.sample(BS)
@@ -321,29 +409,29 @@ def DQN():
                 d_ = torch.from_numpy(np.array(d_)).float().to(device)
 
                 Q = model(obs)
-                #print('A', Q.mean())
                 Q_next = ema_model(obs_next)
-                #print('B', Q_next.mean())
                 Q_next_max = torch.max(Q_next, dim=1)[0]
                 Q_target = r + GAMMA * Q_next_max * (1 - d_)
-                Qs += [Q_target.detach().mean().cpu().item()]
 
                 loss = torch.mean((Q_target - Q.gather(1, action.unsqueeze(1))) ** 2)
                 loss.backward()
                 optimizer.step()
                 ema_model.update(model)
 
+                Qs += [Q_target.detach().mean().cpu().item()]
+                td_errors += [loss.detach().cpu().item()]
+
             if d:
                 break
     
-        if Qs:
-            print(f'Q: {np.mean(Qs)}')
-        if game % 500 == 0:
-            model.train()
-            agent1.reset()
-            r, states = play_game(env, agent1, agent2,action_repeats=ACTION_REPEATS)
-            states[0].save(f'game{game}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000*ACTION_REPEATS, loop=0)
-            model.train()
+        print(f'Game {game}: {n_updates} updates')
+        if n_updates > 0:
+            tracker.add('value_f', np.mean(Qs), game)
+            tracker.add('td_error', np.mean(td_errors), game)
+    
+        if game % 200 == 0:
+            print('N Steps:', agent.n)
+            evaluate(agent, game, tracker, ACTION_REPEATS, opponent=opponent)
 
 
 def main():
