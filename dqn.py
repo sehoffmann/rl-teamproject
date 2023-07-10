@@ -340,7 +340,7 @@ def evaluate(agent, game, tracker, action_repeats, opponent=None, N=20):
 def DQN():
     BS = 64
     GAMMA = 0.995
-    LR = 1e-5
+    LR = 1e-4
     ACTION_REPEATS = 3
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
