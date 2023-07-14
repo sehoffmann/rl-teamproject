@@ -271,6 +271,30 @@ def main():
     r, states = play_game(env, player1, player2)
     states[0].save('basic_game.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000, loop=0)
 
+def baselines():
+
+    import matplotlib.pyplot as plt
+
+    from stable_baselines3 import DDPG
+
+
+    # Create and wrap the environment
+    env = lh.LaserHockeyEnv(mode=lh.LaserHockeyEnv.TRAIN_SHOOTING)
+
+    model = DDPG('MlpPolicy', env, device="mps", verbose=1, seed=None)
+
+    # Train the agent
+
+    while True:
+        time_steps = 1e2
+        model.learn(total_timesteps=int(time_steps))
+        model.save("ddpg_laser_hockey")
+        print(f"Trained for {time_steps} steps")
+
+    
+
+
 if __name__ == '__main__':
     #main()
-    DQN()
+    # DQN()
+    baselines()
