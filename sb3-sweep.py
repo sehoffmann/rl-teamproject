@@ -1,3 +1,5 @@
+import os
+
 import wandb
 
 import laserhockey.laser_hockey_env as lh
@@ -23,7 +25,10 @@ sweep_config = {
 
 MODEL_SAVE_FREQ = 1e5
 
+os.environ['WANDB__SERVICE_WAIT'] = str(240)
+
 sweep_id = wandb.sweep(sweep_config, project="sb3-hockey")
+
 
 def benchmark_baseline(config=None):
     with wandb.init(project="sb3", config=config, sync_tensorboard=True, notes="Find the right algorithm.") as run:
