@@ -242,15 +242,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         assert len(indices) == len(priorities)
 
         priorities += self.epsilon  # avoid zero priority
+        self.max_priority = max(self.max_priority, np.max(priorities))
+        alpha_prios = priorities ** self.alpha
 
-        for idx, priority in zip(indices, priorities):
-            assert priority > 0
+        for idx, alpha_prio in zip(indices, alpha_prios):
             assert 0 <= idx < len(self)
 
-            self.sum_tree[idx] = priority ** self.alpha
-            self.min_tree[idx] = priority ** self.alpha
-
-            self.max_priority = max(self.max_priority, priority)
+            self.sum_tree[idx] = alpha_prio
+            self.min_tree[idx] = alpha_prio
 
     def _sample_proportional(self) -> List[int]:
         """Sample indices based on proportions."""

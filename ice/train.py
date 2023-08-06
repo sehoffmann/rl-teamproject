@@ -40,9 +40,9 @@ class DqnAgent:
 
         return action
 
-    def update_model(self, samples):
+    def update_model(self, samples, frame_idx=None):
         elementwise_loss = self.compute_loss(samples)
-        weights = samples["weights"].unsqueeze(1) # PER weights
+        weights = samples["weights"] # PER weights
         loss = torch.mean(elementwise_loss * weights)
 
         # Update Network
@@ -65,9 +65,13 @@ class DqnAgent:
         done = samples['done']
 
         action = action.unsqueeze(1)  # B x 1
-        curr_q_value = self.model(state).gather(1, action)[:,0] # B
+        curr_q_value = self.model(state).gather(1, action) # B x 1
+        curr_q_value = curr_q_value.squeeze(1) # B
+
         policy_actions = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
-        next_q_value = self.target_model(next_state).gather(1, policy_actions)[:,0].detach() # B
+        next_q_value = self.target_model(next_state).gather(1, policy_actions) # B x 1
+        next_q_value = next_q_value.squeeze(1).detach() # B
+        
         mask = 1 - done # B
         target = (reward + self.gamma * next_q_value * mask).to(self.device)
         loss = F.smooth_l1_loss(curr_q_value, target, reduction="none")
@@ -75,7 +79,7 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=1_000_000, update_frequency=1, track_frequency=10_000):
+    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, track_frequency=10_000):
         self.env = env
         self.agent = agent
         self.device = device
@@ -118,7 +122,7 @@ class DqnTrainer:
             if frame_idx > self.training_delay and frame_idx % self.update_frequency == 0:
                 batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
                 loss, sample_losses = self.agent.update_model(batch, frame_idx)
-                self.replay_buffer.update_priorities(sample_losses.cpu().numpy(), batch['indices'])
+                self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
 
             if frame_idx % self.track_frequency == 0:
                 print(frame_idx, self.tracker.num_games)
@@ -140,14 +144,17 @@ def main():
     else:
         device = torch.device("cpu")
 
+    warmup_frames = 30_000
+
     frame_stacks = 1
     buffer_size = 500_000
-    batch_size = 256
+    batch_size = 128
     lr = 1e-4
     n_step = 3
     gamma = 0.99
     eps_decay_frames = 1_000_000
     beta_decay_frames = 3_000_000
+    update_frequency = 2
 
     # ENV
     env = DiscreteHockey_BasicOpponent()
@@ -188,7 +195,9 @@ def main():
         dqn_agent, 
         replay_buffer, 
         device,
-        frame_stacks=frame_stacks
+        frame_stacks=frame_stacks,
+        update_frequency=update_frequency,
+        training_delay=warmup_frames,
     )
 
     trainer.train(2_000_000)
