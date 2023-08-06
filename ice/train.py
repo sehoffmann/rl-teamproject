@@ -3,6 +3,7 @@ import wandb
 import torch
 import torch.nn.functional as F
 import numpy as np
+import copy
 
 from tracking import Tracker
 from replay_buffer import FrameStacker2
@@ -10,10 +11,12 @@ from replay_buffer import FrameStacker2
 
 class DqnAgent:
 
-    def __init__(self, model, optimizer, num_actions, target_update_frequency=1000):
+    def __init__(self, model, optimizer, num_actions, gamma=0.99, target_update_frequency=1000):
         self.model = model
+        self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
+        self.gamma = gamma
         self.target_update_frequency = target_update_frequency
 
     def select_action(self, state):
@@ -21,7 +24,7 @@ class DqnAgent:
         if self.epsilon > np.random.random():
             selected_action = np.random.randint(self.num_actions)
         else:
-            selected_action = self.dqn(
+            selected_action = self.model(
                 torch.FloatTensor(state).unsqueeze(0).to(self.device)
             ).argmax()
             selected_action = selected_action.detach().cpu().numpy()
@@ -32,42 +35,40 @@ class DqnAgent:
         samples = batch
         # PER needs beta to calculate weights
         weights = samples["weights"].unsqueeze(1)
-        indices = samples["indices"] # nd.array
 
         # N-step Learning loss
         gamma = self.gamma ** self.n_step
-        elementwise_loss = self.gamma(samples, gamma)
+        elementwise_loss = self.compute_loss(samples, gamma)
 
         # PER: importance sampling before average
         loss = torch.mean(elementwise_loss * weights)
 
         self.optimizer.zero_grad()
         loss.backward()
-        #clip_grad_norm_(self.dqn.parameters(), 10.0)
+        #clip_grad_norm_(self.model.parameters(), 10.0)
         self.optimizer.step()
 
         # PER: update priorities
         loss_for_prior = elementwise_loss.detach().cpu().numpy()
         new_priorities = loss_for_prior + self.prior_eps
+        indices = samples["indices"] # nd.array
         self.memory.update_priorities(indices, new_priorities)
 
         return loss.item()
 
     def compute_loss(self, samples, gamma):
-        """Return the loss."""
-        device = self.device  # for shortening the following lines
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
-        action = torch.LongTensor(samples["acts"]).to(device)
-        reward = torch.FloatTensor(samples["rews"]).to(device)
-        done = torch.FloatTensor(samples["done"]).to(device)
+        state = samples['obs']
+        next_state = samples['next_obs']
+        action = samples['acts']
+        reward = samples['rews']
+        done = samples['done']
 
         action = action.unsqueeze(1)  # B x 1
-        curr_q_value = self.dqn(state).gather(1, action)[:,0] # B
-        policy_actions = self.dqn(next_state).argmax(dim=1, keepdim=True) # B x 1
-        next_q_value = self.dqn_target(next_state).gather(1, policy_actions)[:,0].detach() # B
+        curr_q_value = self.model(state).gather(1, action)[:,0] # B
+        policy_actions = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
+        next_q_value = self.target_model(next_state).gather(1, policy_actions)[:,0].detach() # B
         mask = 1 - done # B
-        target = (reward + self.gamma * next_q_value * mask).to(self.device)
+        target = (reward + gamma * next_q_value * mask).to(self.device)
         loss = F.smooth_l1_loss(curr_q_value, target, reduction="none")
         return loss
 
@@ -111,10 +112,6 @@ class DqnTrainer:
 
         state = self.reset_env()
 
-        update_cnt = 0  # counts the number of steps between each update
-        losses = []  # loss for each training step
-        scores = []  # score for each episode
-        frame_scores = []  # average score each frame_interval frames
         for frame_idx in range(1, num_frames + 1):
             action = self.select_action(state)
             next_state, reward, done, info = self.step(action)
@@ -129,12 +126,13 @@ class DqnTrainer:
 
             if frame_idx > self.training_delay and frame_idx % 2 == 0:
                 batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
-                loss = self.agent.update_model(batch)
+                loss = self.agent.update_model(batch, frame_idx)
 
                 if update_cnt % self.target_update == 0 and not self.no_double:
                     self._target_hard_update()
 
             if frame_idx % self.frame_interval == 0:
+                pass
                 # print
     
         self.env.close()
