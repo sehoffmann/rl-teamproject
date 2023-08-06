@@ -168,6 +168,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             beta_start = 0.4,
             beta_max = 1.0,
             beta_frames = 5_000_000,
+            epsilon = 1e-6,
     ):
         """Initialization."""
         assert alpha >= 0
@@ -178,6 +179,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.max_priority = 1.0
         self.tree_ptr = 0
         self.alpha = alpha
+        self.epsilon = epsilon
         self.beta_decay = BetaDecay(beta_start, beta_max, beta_frames)
 
         # capacity must be positive and a power of 2.
@@ -238,6 +240,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def update_priorities(self, indices: List[int], priorities: np.ndarray):
         """Update priorities of sampled transitions."""
         assert len(indices) == len(priorities)
+
+        priorities += self.epsilon  # avoid zero priority
 
         for idx, priority in zip(indices, priorities):
             assert priority > 0
@@ -344,7 +348,7 @@ from collections import deque
 class FrameStacker2:
     def __init__(self, num_frames=1):
         self.num_frames = num_frames  # how many frames to stack together
-        self.buffer = deque(max_len=num_frames)
+        self.buffer = deque(maxlen=num_frames)
         self._stacked = None
 
     @property
