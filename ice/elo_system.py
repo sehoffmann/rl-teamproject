@@ -97,6 +97,12 @@ def play_game(agent1, agent2, max_steps = 250, render=True, action_repeats=1):
     obs_agent2 = env.obs_agent_two()
     states = []
     result = (0, 0)
+    
+    if hasattr(agent1, 'reset'):
+        agent1.reset()
+    if hasattr(agent2, 'reset'):
+        agent2.reset()
+    
     for _ in range(max_steps):
         if render:
             states.append(Image.fromarray(env.render('rgb_array')))

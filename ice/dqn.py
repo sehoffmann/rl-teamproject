@@ -17,12 +17,13 @@ def discrete_to_cont_action(discrete_action):
 
 class DqnAgent:
 
-    def __init__(self, model, optimizer, num_actions, device, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False):
+    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False):
         self.model = model
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
         self.device = device
+        self.stacker = FrameStacker(frame_stacks)  # required for rollout
         self.epsilon_decay = epsilon_decay
         self.gamma = gamma
         self.target_update_frequency = target_update_frequency
@@ -32,7 +33,11 @@ class DqnAgent:
         self.target_model.requires_grad_(False)
         self.target_model.eval()
 
+    def reset(self):
+        self.stacker.clear()
+
     def act(self, state):
+        state = self.stacker.append_and_stack(state)
         return discrete_to_cont_action(self.select_action(state))
 
     def select_action(self, state, frame_idx=None):

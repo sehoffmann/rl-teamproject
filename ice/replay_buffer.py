@@ -300,9 +300,9 @@ class FrameStacker:
         else:
             buffer = self.buffer
             if len(buffer) < self.num_frames:
-                n_repeats = self.num_frames - self.num_frames
+                n_repeats = self.num_frames - len(buffer)
                 buffer = [buffer[0]] * n_repeats + list(self.buffer) # repeat the first element
-            self._stacked_frames = np.concatenate(buffer, axis=-1)
+            self._stacked = np.concatenate(buffer, axis=-1)
         return self._stacked
 
     def clear(self):

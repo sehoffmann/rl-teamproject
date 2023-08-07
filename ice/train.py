@@ -80,6 +80,7 @@ def train(args):
         optimizer, 
         env.action_space.n,
         device,
+        frame_stacks=frame_stacks,
         epsilon_decay=epsilon_decay, 
         gamma=gamma**n_step,
         no_double=args.no_double,
