@@ -18,4 +18,4 @@ class DiscreteHockey_BasicOpponent(HockeyEnv_BasicOpponent):
         if False:
             return state, reward, done, truncated
         else:
-            return state, reward, done, truncated, info
+            return state, reward, done, truncated, info   
