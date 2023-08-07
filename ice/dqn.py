@@ -13,6 +13,7 @@ import plotting
 
 from dqn_stenz import get_stenz
 
+TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2']
 
 class NNAgent:
     ENV = IcyHockey()
@@ -117,7 +118,7 @@ class DqnAgent(NNAgent):
 
 class DqnTrainer:
 
-    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader", schedule=None):
+    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, schedule=None):
         assert schedule is None or schedule in ['lilith', 'basic', 'adv1', 'adv2']
         
         self.model_dir = model_dir
@@ -134,9 +135,8 @@ class DqnTrainer:
         self.tracker = Tracker()
 
         self.tournament = HockeyTournamentEvaluation(restart=True)
-        self.tournament.register_agent(agent_name, self.agent)
-        self.agent_name = agent_name
-        #self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
+        self.tournament.register_agent('self', self.agent)
+        #self.tournament.register_agent('stenz', get_stenz(), n_welcome_games=10)
 
     def reset_env(self):
         self.stacker.clear()
@@ -230,7 +230,7 @@ class DqnTrainer:
     
     def update_elo(self, frame_idx):
         self.agent.model.eval()
-        self.tournament.evaluate_agent(self.agent_name, self.agent, n_games=10)
+        self.tournament.evaluate_agent('self', self.agent, n_games=10)
         self.tracker.add_checkpoint(self.tournament.elo_leaderboard.elo_system)
         self.agent.model.train()
 
