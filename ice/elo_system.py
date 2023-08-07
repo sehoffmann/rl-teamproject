@@ -186,3 +186,12 @@ class HockeyTournamentEvaluation():
     def __str__(self):
         return self.elo_leaderboard.__str__()
 
+
+if __name__ == "__main__":
+
+    # get baselines for basic opponents
+    tournament = HockeyTournamentEvaluation(restart=True)
+
+    tournament.random_plays(n_plays=1000)
+
+    print(tournament)
