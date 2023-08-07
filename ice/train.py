@@ -25,7 +25,7 @@ def create_model(args, num_actions, obs_shape):
         return model
 
 def train(args):
-    model_dir = Path(f'models/{args.name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}')
+    model_dir = Path(f'models') / f'{args.name.replace(" ", "_")}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}'
     os.makedirs(model_dir, exist_ok=True)
     print('Model dir:', model_dir.resolve())
 
@@ -98,13 +98,14 @@ def train(args):
         training_delay=warmup_frames,
     )
 
-    trainer.train(2_000_000)
+    trainer.train(args.frames)
 
 
 def main():
     parser = argparse.ArgumentParser()
 
     # General
+    parser.add_argument('-f', '--frames', type=int, default=4_000_000)
     parser.add_argument('-n', '--name', type=str, default='test')
     parser.add_argument('--checkpoint', type=str)
 
