@@ -127,13 +127,14 @@ def play_game(agent1, agent2, max_steps = 250, render=True, action_repeats=1):
     return r, states, result
 
 class HockeyTournamentEvaluation():
-    def __init__(self, restart=False):
+    def __init__(self, restart=False, save=False):
         """If restart = True, it starts with only the weak and strong opp"""
         self.elo_leaderboard = EloLeaderboard(load_stored=not restart)
         self.agent_register = {
             'basic_weak': lh.BasicOpponent(),
             'basic_strong': lh.BasicOpponent(weak=False)
         }
+        self.save = save
     
     def get_agent_instance(self, agent_name):
         try:
