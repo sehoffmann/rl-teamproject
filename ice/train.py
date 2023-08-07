@@ -38,9 +38,8 @@ def train(args):
     else:
         device = torch.device("cpu")
 
-    
 
-    warmup_frames = 50_000
+    warmup_frames = 200_000
 
     frame_stacks = args.frame_stacks
     buffer_size = 500_000
