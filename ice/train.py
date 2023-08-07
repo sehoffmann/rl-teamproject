@@ -25,6 +25,7 @@ def create_model(args, num_actions, obs_shape):
 def train(args):
     wandb_mode = 'disabled' if args.no_wandb else 'online'
     wandb.init(project='ice', mode=wandb_mode)
+    wandb.config.update(args)
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
@@ -74,6 +75,7 @@ def train(args):
         device,
         epsilon_decay=epsilon_decay, 
         gamma=gamma**n_step,
+        no_double=args.no_double,
     )
 
     # Trainer
@@ -101,6 +103,7 @@ def main():
     parser.add_argument('--no-per', action='store_true')
     parser.add_argument('--no-dueling', action='store_true')
     parser.add_argument('--no-nstep', action='store_true')
+    parser.add_argument('--no-double', action='store_true')
     parser.add_argument('--frame-stacks', type=int, default=1)
     
     args = parser.parse_args()

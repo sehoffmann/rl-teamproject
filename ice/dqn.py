@@ -11,7 +11,7 @@ import plotting
 
 class DqnAgent:
 
-    def __init__(self, model, optimizer, num_actions, device, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000):
+    def __init__(self, model, optimizer, num_actions, device, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False):
         self.model = model
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
@@ -21,6 +21,7 @@ class DqnAgent:
         self.gamma = gamma
         self.target_update_frequency = target_update_frequency
         self.num_updates = 0
+        self.no_double = no_double
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
@@ -69,7 +70,12 @@ class DqnAgent:
         curr_q_value = curr_q_value.squeeze(1) # B
 
         next_q_value = self.target_model(next_state)
-        best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+
+        if self.no_double:
+            best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+        else:
+            best_action = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
+        
         next_value_f = next_q_value.gather(1, best_action) # B x 1
         next_value_f = next_value_f.squeeze(1).detach() # B
         
