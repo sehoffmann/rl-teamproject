@@ -8,27 +8,31 @@ import json
 from pathlib import Path
 
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from environments import DiscreteHockey_BasicOpponent
-from models import DenseNet
+from environments import IcyHockey
+from models import Lilith
 from decay import EpsilonDecay
 from dqn import DqnAgent, DqnTrainer
 
+MODELS = ['lilith']
+PRESETS = ['lilith']
+
 def create_model(config, num_actions, obs_shape):
-    
-    if config['checkpoint']:
-        return torch.load(config['checkpoint'])
-    else:
-        model = DenseNet(
+    cp_path = config['checkpoint']
+    if cp_path:
+        print(f'Loading model from {cp_path}')
+        return torch.load(cp_path)
+    elif config['model'] == 'lilith':
+        model = Lilith(
             obs_shape[0], 
             num_actions, 
             hidden_size=256, 
-            no_dueling=not config['dueling'],
+            dueling=config['dueling'],
         )
         return model
 
 def train(config, model_dir, device):
     # ENV
-    env = DiscreteHockey_BasicOpponent()
+    env = IcyHockey()
     
     # Replay Buffer
     obs_shape = [env.observation_space.shape[0] * config['frame_stacks']]
@@ -98,6 +102,7 @@ def make_config(args):
         'frames': args.frames,
         'name': args.name,
         'checkpoint': args.checkpoint,
+        'model': args.model,
         'priority_rp': args.per,
         'double_q': args.double_q,
         'nsteps': args.nsteps,
@@ -108,7 +113,7 @@ def make_config(args):
         'batch_size': 256,
         'cosine_annealing': args.cosine_annealing,
         'update_frequency': 2,
-        'warmup_frames': 200_000,
+        'warmup_frames': 300,#200_000,
         'buffer_size': 500_000,
         'eps_decay': 1_000_000,
         'beta_decay': 2_000_000,
@@ -123,15 +128,17 @@ def main():
     parser.add_argument('-n', '--name', type=str, default='test')
     parser.add_argument('--checkpoint', type=str)
     parser.add_argument('--no-wandb', action='store_true')
+    parser.add_argument('--preset', type=str, default=0)
 
     # Method
+    parser.add_argument('--model', choices=MODELS, type=str, default='lilith')
     parser.add_argument('--per', action='store_true')
     parser.add_argument('--no-dueling', action='store_true')
     parser.add_argument('--nsteps', type=int, default=3)
     parser.add_argument('--double-q', action='store_true')
     parser.add_argument('--frame-stacks', type=int, default=1)
     parser.add_argument('--cosine-annealing', action='store_true')
-    
+
     args = parser.parse_args()
     config = make_config(args)
 
