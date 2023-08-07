@@ -38,7 +38,6 @@ def train(args):
     else:
         device = torch.device("cpu")
 
-
     warmup_frames = 200_000
 
     frame_stacks = args.frame_stacks
@@ -46,8 +45,8 @@ def train(args):
     batch_size = 256
     lr = 1e-4
     gamma = 0.99
-    eps_decay_frames = 1_000_000
-    beta_decay_frames = 3_000_000
+    eps_decay_frames = 1_000_000 + warmup_frames
+    beta_decay_frames = 2_000_000 + warmup_frames
     update_frequency = 2
 
     if args.no_nstep:
