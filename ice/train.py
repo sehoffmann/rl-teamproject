@@ -81,15 +81,22 @@ class DqnAgent:
         loss = F.smooth_l1_loss(curr_q_value, target, reduction="none")
         return loss
 
+    def save_model(self, path):
+        self.model.to('cpu')
+        torch.save(self.model, path)
+        self.model.to(self.device)
+
+
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1):
+    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=50_000):
         self.env = env
         self.agent = agent
         self.device = device
         self.replay_buffer = replay_buffer
         self.training_delay = training_delay
         self.update_frequency = update_frequency
+        self.checkpoint_frequency = checkpoint_frequency
 
         self.stacker = FrameStacker2(frame_stacks)        
         self.tracker = Tracker()
@@ -120,15 +127,29 @@ class DqnTrainer:
                 self.tracker.add_game(info)
                 state = self.reset_env()
 
-            if frame_idx > self.training_delay and frame_idx % self.update_frequency == 0:
-                batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
-                loss, sample_losses = self.agent.update_model(batch, frame_idx)
-                self.tracker.add_update(loss)
-                if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
-                    self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
-                
-    
+            # Skip training if not enough frames in replay buffer
+            if frame_idx <= self.training_delay:
+                continue
+
+            if frame_idx % self.update_frequency == 0:
+                self._update(frame_idx)
+
+            if frame_idx % self.checkpoint_frequency == 0:
+                self.checkpoint(frame_idx)
+
         self.env.close()
+
+    def _update(self, frame_idx):
+        batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
+        loss, sample_losses = self.agent.update_model(batch, frame_idx)
+        self.tracker.add_update(loss)
+        if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
+            self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
+
+
+    def checkpoint(self, frame_idx):
+        name = f'frame_{frame_idx:010d}'
+        self.agent.save_model(f'{name}.pt')
 
 
 def main():
@@ -180,7 +201,7 @@ def main():
         obs_shape[0], 
         num_actions, 
         hidden_size=256, 
-        no_dueling=True
+        no_dueling=False
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     epsilon_decay = EpsilonDecay(num_frames=eps_decay_frames)
