@@ -133,7 +133,8 @@ class DqnTrainer:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--no-wandb', action='store_true', default=True)
+    parser.add_argument('--no-wandb', action='store_true')
+    parser.add_argument('--no-per', action='store_true')
     args = parser.parse_args()
 
     wandb_mode = 'disabled' if args.no_wandb else 'online'
@@ -161,15 +162,17 @@ def main():
     
     # Replay Buffer
     obs_shape = [env.observation_space.shape[0] * frame_stacks]
-    replay_buffer = PrioritizedReplayBuffer(
-        obs_shape, 
-        buffer_size, 
-        batch_size, 
-        n_step = n_step,
-        gamma = gamma,
-        beta_frames = beta_decay_frames
-    )
-    replay_buffer = ReplayBuffer(obs_shape, buffer_size, batch_size)
+    if args.no_per:
+        replay_buffer = ReplayBuffer(obs_shape, buffer_size, batch_size)
+    else:
+        replay_buffer = PrioritizedReplayBuffer(
+            obs_shape, 
+            buffer_size, 
+            batch_size, 
+            n_step = n_step,
+            gamma = gamma,
+            beta_frames = beta_decay_frames
+        )
 
     # Model & DQN Agent
     num_actions = env.action_space.n

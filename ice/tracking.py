@@ -15,6 +15,9 @@ class MetricList:
             self.metrics[key] = []
         self.metrics[key].append(value)
 
+    def mean(self, key):
+        return np.mean(self[key])
+
     def clear(self, key=None):
         if key is None:
             self.metrics = {}
@@ -30,7 +33,6 @@ class MetricList:
     def __iter__(self):
         return iter(self.metrics)
     
-
 
 class Tracker:
     def __init__(self, wandb=True, tracking_frequency=5_000):
@@ -65,12 +67,23 @@ class Tracker:
         winner_stats = np.array(self.winner_stats)
         draw_rate = np.mean(winner_stats == 0) * 100
         win_rate = np.mean(winner_stats == 1) * 100
-        loss_rate = np.mean(winner_stats == 2) * 100
+        loss_rate = np.mean(winner_stats == -1) * 100
 
-        loss = np.mean(self.interval_metrics['loss'])
-        reward = np.mean(self.interval_metrics['episode_reward'])
+        # Log to wandb
+        metrics = {k: self.interval_metrics.mean(k) for k in self.interval_metrics}
+        metrics.update({
+            'fps': fps,
+            'draw_rate': draw_rate,
+            'win_rate': win_rate,
+            'loss_rate': loss_rate,
+        })
+        if self.wandb:
+            wandb.log(metrics, step=self.num_frames)
 
-        print(f'Fr. {self.num_frames: >7} | Game {self.num_games: >5} | Loss {loss:.2f} | Rew. {reward:.3f} | WR {win_rate:.1f}% | {fps:.0f} FPS')
+        # Log to console
+        loss = self.interval_metrics.mean('loss')
+        reward = self.interval_metrics.mean('reward')
+        print(f'Fr. {self.num_frames: >7} | Game {self.num_games: >5} | Loss {loss:.3f} | Rew. {reward:.3f} | WR {win_rate:.1f}% | {fps:.0f} FPS')
 
         self.reset()
 
@@ -87,7 +100,7 @@ class Tracker:
     def add_game(self, info):
         self.num_games += 1
         self.interval_metrics.add('episode_length', self.num_frames - self.episode_frame_idx)
-        self.interval_metrics.add('episode_reward', self.episode_cum_reward)
+        self.interval_metrics.add('reward', self.episode_cum_reward)
 
         self.episode_cum_reward = 0
         self.episode_frame_idx = self.num_frames
