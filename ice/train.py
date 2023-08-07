@@ -45,8 +45,8 @@ def train(args):
     batch_size = 256
     lr = 1e-4
     gamma = 0.99
-    eps_decay_frames = 1_000_000 + warmup_frames
-    beta_decay_frames = 2_000_000 + warmup_frames
+    eps_decay_frames = 1_000_000
+    beta_decay_frames = 2_000_000
     update_frequency = 2
 
     if args.no_nstep:

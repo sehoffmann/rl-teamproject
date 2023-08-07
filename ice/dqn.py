@@ -135,8 +135,22 @@ class DqnTrainer:
         return next_state, reward, done, info
 
     def train(self, num_frames: int):
-        state = self.reset_env()
+        
 
+        # Warmup
+        print('Filling replay buffer...')
+        state = self.reset_env()
+        for _ in range(self.training_delay):
+            action = self.agent.select_action(state, 1)
+            next_state, reward, done, info = self.step(action)
+            self.replay_buffer.store(state, action, reward, next_state, done)
+            state = next_state
+            if done:
+                state = self.reset_env()
+
+        # Training
+        print('Training...')
+        state = self.reset_env()
         for frame_idx in range(1, num_frames + 1):
             action = self.agent.select_action(state, frame_idx)
             next_state, reward, done, info = self.step(action)
@@ -151,10 +165,6 @@ class DqnTrainer:
             if done:
                 self.tracker.add_game(info)
                 state = self.reset_env()
-
-            # Skip training if not enough frames in replay buffer
-            if frame_idx <= self.training_delay:
-                continue
 
             if frame_idx % self.update_frequency == 0:
                 self._update(frame_idx)
