@@ -118,6 +118,9 @@ class DqnTrainer:
             self.replay_buffer.store(state, action, reward, next_state, done)
             state = next_state
             self.tracker.add_frame(reward)
+            self.tracker.log('epsilon', self.agent.epsilon_decay(frame_idx))
+            if hasattr(self.replay_buffer, 'beta_decay'):
+                self.tracker.log('beta', self.replay_buffer.beta_decay(frame_idx))
 
             # if episode ends
             if done:
