@@ -5,11 +5,46 @@ import torch.nn.functional as F
 import numpy as np
 import copy
 
-from tracking import Tracker
+from tracking import Tracker, TrackerElo
 from replay_buffer import FrameStacker2, ReplayBuffer, PrioritizedReplayBuffer
 from discretization import DiscreteHockey_BasicOpponent
 from models import DenseNet
 from decay import EpsilonDecay
+
+from elo_system import HockeyTournamentEvaluation
+from time_utils import timeit
+
+    
+class TrackerElo(Tracker):
+
+    def __init__(self, agent_name: str, agent_instance, wandb=True, tracking_frequency=5000):
+        super().__init__(wandb, tracking_frequency)
+        self.tournament = HockeyTournamentEvaluation(restart=True)
+        self.tournament.register_agent(agent_name, agent_instance)
+        self.agent_name = agent_name
+        self.agent_instance = agent_instance
+
+    @timeit
+    def _update_elo(self):
+        if self.num_games % 100 == 0:
+            # let all play sometime to reset elo
+            self.tournament.random_plays(n_plays=1)    
+        else:
+            self.tournament.evaluate_agent(self.agent_name, self.agent_instance, n_games=1, verbose=True)
+        for (ag_name, ag_elo) in self.tournament.elo_leaderboard.elo_system.items():
+            self.interval_metrics.add(
+                ag_name, 
+                self.tournament.elo_leaderboard.get_elo_score(ag_elo)
+            )
+
+    def _finalize_interval(self):
+        self._update_elo()
+        print(self.interval_metrics.metrics['basic_weak'])        
+        return super()._finalize_interval()
+    
+
+def discrete_to_continuous_action(action_discrete):
+    return DiscreteHockey_BasicOpponent().discrete_to_continous_action(action_discrete)
 
 class DqnAgent:
 
@@ -26,6 +61,10 @@ class DqnAgent:
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
+
+    def act(self, state):
+        """For now, interface function to be compatible with elo tracker"""
+        return discrete_to_continuous_action(self.select_action(state))
 
     def select_action(self, state, frame_idx=None):
         """Select an action from the input state and return state and action."""
@@ -92,7 +131,8 @@ class DqnTrainer:
         self.update_frequency = update_frequency
 
         self.stacker = FrameStacker2(frame_stacks)        
-        self.tracker = Tracker()
+        # self.tracker = Tracker()
+        self.tracker = TrackerElo(agent_name='DQN', agent_instance=agent)
 
 
     def reset_env(self):
