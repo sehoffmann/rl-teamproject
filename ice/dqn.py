@@ -19,7 +19,7 @@ def discrete_to_cont_action(discrete_action):
 
 class DqnAgent:
 
-    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False):
+    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None):
         self.model = model
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
@@ -31,6 +31,7 @@ class DqnAgent:
         self.target_update_frequency = target_update_frequency
         self.num_updates = 0
         self.no_double = no_double
+        self.scheduler = scheduler
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
@@ -67,6 +68,9 @@ class DqnAgent:
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
         self.optimizer.step()
+
+        if self.scheduler is not None:
+            self.scheduler.step()
         
         self.num_updates += 1
         if self.num_updates % self.target_update_frequency == 0:
@@ -124,7 +128,7 @@ class DqnTrainer:
         self.tournament = HockeyTournamentEvaluation(restart=True)
         self.tournament.register_agent(agent_name, self.agent)
         self.agent_name = agent_name
-        self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
+        #self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
 
 
     def reset_env(self):
