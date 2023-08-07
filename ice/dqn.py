@@ -189,10 +189,10 @@ class DqnTrainer:
         return game_imgs
     
     def update_elo(self, frame_idx):
-        self.agent.eval()
+        self.agent.model.eval()
         self.tournament.evaluate_agent(self.agent_name, self.agent, n_games=10)
         self.tracker.add_checkpoint(self.tournament.elo_leaderboard.elo_system)
-        self.agent.train()
+        self.agent.model.train()
 
     def checkpoint(self, frame_idx):
         self.update_elo(frame_idx)
