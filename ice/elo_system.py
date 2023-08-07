@@ -142,14 +142,14 @@ class HockeyTournamentEvaluation():
         except KeyError:
             raise Error("Agent not registered, use register function")
 
-    def register_agent(self, agent_name: str, agent, update=False):
+    def register_agent(self, agent_name: str, agent, update=False, n_welcome_games=1):
         """Call this once to add your agent to the rating system
         you can also call it again to update the instance associated with the given agent name.
         Note: when you register a new agent, it gets evaluated once.
         """
         self.agent_register[agent_name] = agent
         if not update:
-            self.evaluate_agent(agent_name, agent, n_games=1)
+            self.evaluate_agent(agent_name, agent, n_games=n_welcome_games)
 
     def is_registered(self, agent_name):
         return agent_name in self.agent_register.keys()
@@ -172,8 +172,11 @@ class HockeyTournamentEvaluation():
     def run_n_games(self, agent_1_name, agent_2_name, agent_1, agent_2, n = 1, save_gif=False):
         """Note: n games SAME pairing"""
         for _ in range(n):
-            _, states, res = play_game(agent_1, agent_2, render=False)
-            _ = self.elo_leaderboard.update_rating(pairing=(agent_1_name, agent_2_name), result=res, save=self.save)
+            if save_gif:
+                _, states, res = play_game(agent_1, agent_2, render=True)
+            else:
+                _, states, res = play_game(agent_1, agent_2, render=False)
+            _ = self.elo_leaderboard.update_rating(pairing=(agent_1_name, agent_2_name), result=res)
         # print(res)
         if save_gif:
             states[0].save(f'tournament_{agent_1_name}_{agent_2_name}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000)
