@@ -92,7 +92,8 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000):
+    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000):
+        self.model_dir = model_dir
         self.env = env
         self.agent = agent
         self.device = device
@@ -171,9 +172,9 @@ class DqnTrainer:
 
     def checkpoint(self, frame_idx):
         name = f'frame_{frame_idx:010d}'
-        self.agent.save_model(f'{name}.pt')
+        self.agent.save_model(self.model_dir / f'{name}.pt')
 
         images = self.rollout(4)
         images = [game_imgs + game_imgs[-1]*30  for game_imgs in images] # repeat last frame
         images = itertools.chain.from_iterable(images)
-        plotting.save_gif(f'{name}.gif', images)
+        plotting.save_gif(self.model_dir / f'/{name}.gif', images)
