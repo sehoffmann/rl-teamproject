@@ -11,7 +11,7 @@ from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from environments import IcyHockey
 from models import Lilith
 from decay import EpsilonDecay
-from dqn import DqnAgent, DqnTrainer, TRAINING_SCHEDULES
+from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 
 MODELS = ['lilith']
 
@@ -76,9 +76,14 @@ def train(config, model_dir, device):
         device,
         frame_stacks=config['frame_stacks'],
         update_frequency=config['update_frequency'],
-        training_delay=config['warmup_frames'],
+        training_delay=0 if config['lilith_bootstrap'] else config['warmup_frames'],
         schedule=config['schedule'],
     )
+
+    # Prepopulate using lilith-weak
+    if config['lilith_bootstrap']:
+        lilith_weak = NNAgent.load_lilith_weak(device)
+        trainer.prepopulate(lilith_weak, config['warmup_frames'])
 
     trainer.train(config['frames'])
 
@@ -117,6 +122,7 @@ def make_config(args):
         'buffer_size': args.buffer_size,
         'eps_decay': args.eps_decay,
         'beta_decay': args.beta_decay,
+        'lilith_bootstrap': not args.no_lilith_bootstrap,
     }
     return config
 
@@ -139,6 +145,7 @@ def main():
     parser.add_argument('--eps-decay', type=int, default=1_000_000)
     parser.add_argument('--beta-decay', type=int, default=2_000_000)
     parser.add_argument('--gamma', type=float, default=0.99)
+    parser.add_argument('--no-lilith-bootstrap', action='store_true')
 
     # Method
     parser.add_argument('--model', choices=MODELS, type=str, default='lilith')

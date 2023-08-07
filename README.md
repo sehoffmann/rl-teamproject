@@ -31,7 +31,9 @@ The version created by the procedure below will be called *lilith-weak*.
 
 # Basic Training Schedule
 
-Train for 20M 
+Train for 15M
+* Eps-Decay: 4M
+* Cosine Annealing
 1. Bootstrap Replay Buffer with Lilith
 2. Train for 500k against weak, then add strong
 3. Add lilith-weak at 1M (p=5)

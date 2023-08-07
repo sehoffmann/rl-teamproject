@@ -1,5 +1,8 @@
 import copy
 import itertools
+from pathlib import Path
+import json
+
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -28,15 +31,36 @@ class NNAgent:
 
     def act(self, state):
         state = self.stacker.append_and_stack(state)
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        action_discrete = self.model(state).argmax(dim=1).item()
+        action_discrete = self.select_action(state)
         return self.ENV.discrete_to_continous_action(action_discrete)
+
+    def select_action(self, state, frame_idx=None):
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        return self.model(state).argmax(dim=1).item()
+
+    def clone(self):
+        model = copy.deepcopy(self.model)
+        model.eval().requires_grad_(False)
+        return NNAgent(model, self.device, self.stacker.num_frames)
 
     def save_model(self, path):
         self.model.to('cpu')
         torch.save(self.model, path)
         self.model.to(self.device)
 
+    @classmethod
+    def load_model(cls, path, device):
+        path = Path(path)
+        with open(path.parent / 'config.json', 'r') as f:
+            config = json.load(f)
+        model = torch.load(path, map_location=device)
+        model.eval().requires_grad_(False)
+        return cls(model, device, frame_stacks=config['frame_stacks'])
+    
+    @classmethod
+    def load_lilith_weak(cls, device):
+        path = Path('models') / 'lilith-weak_20230807_23:59/frame_0001800000.pt'
+        return cls.load_model(path, device)
 
 class DqnAgent(NNAgent):
 
@@ -136,6 +160,7 @@ class DqnTrainer:
 
         self.tournament = HockeyTournamentEvaluation(restart=True)
         self.tournament.register_agent('self', self.agent)
+        self.tournament.register_agent('lilith_weak', NNAgent.load_lilith_weak(self.device), n_welcome_games=10)
         #self.tournament.register_agent('stenz', get_stenz(), n_welcome_games=10)
 
     def reset_env(self):
@@ -147,6 +172,24 @@ class DqnTrainer:
         next_state, reward, done, _, info = self.env.step(action)
         next_state = self.stacker.append_and_stack(next_state)
         return next_state, reward, done, info
+
+    def prepopulate(self, agent, num_frames: int):
+        print('Prepopulating replay buffer...')
+        self.stacker.clear()
+        state, _ = self.env.reset()
+        self.env.add_opponent('TEMP-AGENT', agent.clone(), prob=4)
+        state_self = self.stacker.append_and_stack(state)
+        for frame_idx in range(1, num_frames + 1):
+            action = agent.select_action(state)
+            next_state, reward, done, _, info = self.env.step(action)
+            next_state_self = self.stacker.append_and_stack(next_state)
+            self.replay_buffer.store(state_self, action, reward, next_state_self, done)
+            state = next_state
+            if done:
+                self.stacker.clear()
+                state, _ = self.env.reset()
+                state_self = self.stacker.append_and_stack(state)
+        self.env.remove_opponent('TEMP-AGENT')
 
     def train(self, num_frames: int):
         # Warmup
@@ -200,6 +243,15 @@ class DqnTrainer:
             if frame_idx >= 1_500_000 and frame_idx % 100_000 == 0:
                 agent = self._copy_agent()
                 self.env.add_opponent('self', agent, prob=5, rolling=5)
+        elif self.schedule == 'basic':
+            if frame_idx == 500_000:
+                self.env.add_basic_opponent(weak=False)
+            if frame_idx == 1:
+                agent = NNAgent.load_lilith_weak(self.device)
+                self.env.add_opponent('lilith_weak', agent, prob=5)
+            if frame_idx >= 2_000_000 and frame_idx % 500_000 == 0:
+                agent = self._copy_agent()
+                self.env.add_opponent('self', agent, prob=7, rolling=5)
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)

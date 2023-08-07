@@ -6,4 +6,5 @@ python ice/train.py \
     --schedule "lilith" \
     -f 3000000 \
     --nsteps 1 \
-    --eps-decay 1_000_000
+    --eps-decay 1_000_000 \
+    --no-lilith-bootstrap

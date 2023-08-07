@@ -140,7 +140,7 @@ class HockeyTournamentEvaluation():
         try:
             return self.agent_register[agent_name]
         except KeyError:
-            raise Error("Agent not registered, use register function")
+            raise ValueError("Agent not registered, use register function")
 
     def register_agent(self, agent_name: str, agent, update=False, n_welcome_games=1):
         """Call this once to add your agent to the rating system
