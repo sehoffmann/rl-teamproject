@@ -73,6 +73,8 @@ class Tracker:
         metrics = {k: self.interval_metrics.mean(k) for k in self.interval_metrics}
         metrics.update({
             'fps': fps,
+            'num_games': self.num_games,
+            'num_updates': self.num_updates,
             'draw_rate': draw_rate,
             'win_rate': win_rate,
             'loss_rate': loss_rate,

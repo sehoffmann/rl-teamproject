@@ -1,7 +1,9 @@
 import argparse
 import wandb
 import torch
-
+import datetime
+import os
+from pathlib import Path
 
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from environments import DiscreteHockey_BasicOpponent
@@ -23,12 +25,20 @@ def create_model(args, num_actions, obs_shape):
         return model
 
 def train(args):
+    model_dir = Path(f'models/{args.name}_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}')
+    os.makedirs(model_dir, exist_ok=True)
+    print('Model dir:', model_dir.resolve())
+
     wandb_mode = 'disabled' if args.no_wandb else 'online'
-    wandb.init(project='ice', mode=wandb_mode)
+    wandb_name = None if args.name == 'test' else args.name
+    wandb.init(project='ice', name=wandb_name, mode=wandb_mode)
+    wandb.config.update(args)
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
+
+    
 
     warmup_frames = 50_000
 
@@ -74,10 +84,12 @@ def train(args):
         device,
         epsilon_decay=epsilon_decay, 
         gamma=gamma**n_step,
+        no_double=args.no_double,
     )
 
     # Trainer
     trainer = DqnTrainer(
+        model_dir,
         env, 
         dqn_agent, 
         replay_buffer, 
@@ -94,6 +106,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     # General
+    parser.add_argument('-n', '--name', type=str, default='test')
     parser.add_argument('--checkpoint', type=str)
 
     # Method
@@ -101,6 +114,7 @@ def main():
     parser.add_argument('--no-per', action='store_true')
     parser.add_argument('--no-dueling', action='store_true')
     parser.add_argument('--no-nstep', action='store_true')
+    parser.add_argument('--no-double', action='store_true')
     parser.add_argument('--frame-stacks', type=int, default=1)
     
     args = parser.parse_args()

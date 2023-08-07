@@ -18,7 +18,7 @@ def discrete_to_cont_action(discrete_action):
 
 class DqnAgent:
 
-    def __init__(self, model, optimizer, num_actions, device, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000):
+    def __init__(self, model, optimizer, num_actions, device, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False):
         self.model = model
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
@@ -28,6 +28,7 @@ class DqnAgent:
         self.gamma = gamma
         self.target_update_frequency = target_update_frequency
         self.num_updates = 0
+        self.no_double = no_double
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
@@ -79,7 +80,12 @@ class DqnAgent:
         curr_q_value = curr_q_value.squeeze(1) # B
 
         next_q_value = self.target_model(next_state)
-        best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+
+        if self.no_double:
+            best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+        else:
+            best_action = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
+        
         next_value_f = next_q_value.gather(1, best_action) # B x 1
         next_value_f = next_value_f.squeeze(1).detach() # B
         
@@ -96,7 +102,8 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader"):
+    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader"):
+        self.model_dir = model_dir
         self.env = env
         self.agent = agent
         self.device = device
@@ -189,9 +196,9 @@ class DqnTrainer:
         self.update_elo(frame_idx)
 
         name = f'frame_{frame_idx:010d}'
-        self.agent.save_model(f'{name}.pt')
+        self.agent.save_model(self.model_dir / f'{name}.pt')
 
         images = self.rollout(4)
         images = [game_imgs + game_imgs[-1]*30  for game_imgs in images] # repeat last frame
         images = itertools.chain.from_iterable(images)
-        plotting.save_gif(f'{name}.gif', images)
+        plotting.save_gif(self.model_dir / f'/{name}.gif', images)
