@@ -121,8 +121,10 @@ class DqnTrainer:
             if frame_idx > self.training_delay and frame_idx % self.update_frequency == 0:
                 batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
                 loss, sample_losses = self.agent.update_model(batch, frame_idx)
-                self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
                 self.tracker.add_update(loss)
+                if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
+                    self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
+                
     
         self.env.close()
 
@@ -165,6 +167,7 @@ def main():
         gamma = gamma,
         beta_frames = beta_decay_frames
     )
+    replay_buffer = ReplayBuffer(obs_shape, buffer_size, batch_size)
 
     # Model & DQN Agent
     num_actions = env.action_space.n
