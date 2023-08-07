@@ -106,6 +106,10 @@ class Tracker:
         self.episode_frame_idx = self.num_frames
         self.winner_stats.append(info['winner'])
 
+    def add_checkpoint(self, elo_dict):
+        for (ag_name, ag_elo) in elo_dict.items():
+            self.interval_metrics.add(f'elo_{ag_name}', ag_elo)
+
     def log(self, key, value):
         self.interval_metrics.add(key, value)
 

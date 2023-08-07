@@ -5,9 +5,16 @@ import torch.nn.functional as F
 import numpy as np
 
 from decay import EpsilonDecay
+from environments import DiscreteHockey_BasicOpponent
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
 from tracking import Tracker
+from elo_system import HockeyTournamentEvaluation
 import plotting
+from time_utils import timeit
+
+def discrete_to_cont_action(discrete_action):
+    # TODO: better place for this??
+    return DiscreteHockey_BasicOpponent().discrete_to_continous_action(discrete_action)
 
 class DqnAgent:
 
@@ -24,6 +31,9 @@ class DqnAgent:
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
+
+    def act(self, state):
+        return discrete_to_cont_action(self.select_action(state))
 
     def select_action(self, state, frame_idx=None):
         if frame_idx is not None:
@@ -86,7 +96,7 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000):
+    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader"):
         self.env = env
         self.agent = agent
         self.device = device
@@ -97,6 +107,10 @@ class DqnTrainer:
 
         self.stacker = FrameStacker(frame_stacks)        
         self.tracker = Tracker()
+
+        self.tournament = HockeyTournamentEvaluation(restart=True)
+        self.tournament.register_agent(agent_name, self.agent)
+        self.agent_name = agent_name
 
 
     def reset_env(self):
@@ -162,8 +176,16 @@ class DqnTrainer:
             game_imgs.append(imgs)
         self.agent.model.train()
         return game_imgs
+    
+    @timeit
+    def update_elo(self, frame_idx):
+        self.tournament.evaluate_agent(self.agent_name, self.agent, n_games=10)
+        self.tracker.add_checkpoint(self.tournament.elo_leaderboard.elo_system)
 
     def checkpoint(self, frame_idx):
+
+        self.update_elo(frame_idx)
+
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(f'{name}.pt')
 
