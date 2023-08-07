@@ -1,7 +1,8 @@
 # https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py
 
 import operator
-
+import pysegmenttree
+import numpy as np
 
 class SegmentTree(object):
     def __init__(self, capacity, operation, neutral_element):
@@ -123,6 +124,27 @@ class SumSegmentTree(SegmentTree):
                 prefixsum -= self._value[2 * idx]
                 idx = 2 * idx + 1
         return idx - self._capacity
+    
+class FastSumSegmentTree():
+    def __init__(self, capacity) -> None:
+        self.tree = pysegmenttree.stree([0.0] * capacity, func=pysegmenttree.QueryFunction.sum)
+    
+    def sum(self, start=0, end=None):
+        """Returns arr[start] + ... + arr[end]"""
+        return self.tree.query(start, end)
+    
+    def find_prefix_idx(self, prefixsum):
+        assert 0 <= prefixsum <= self.sum() + 1e-5
+        idx = 1
+        while idx < self._capacity:  # while non-leaf
+            if self._value[2 * idx] > prefixsum:
+                idx = 2 * idx
+            else:
+                prefixsum -= self._value[2 * idx]
+                idx = 2 * idx + 1
+        return idx - self._capacity
+    
+
 
 
 class MinSegmentTree(SegmentTree):
@@ -146,3 +168,8 @@ if __name__ == '__main__':
     print(c)
     print(c.find_prefixsum_idx(0.2))
     print(c.find_prefixsum_idx(1.2))
+
+    tree2 = pysegmenttree.stree([0] * 32)
+    tree2.update(0, 1)
+    tree2.update(1, 3)
+    print(tree2.query(0, 1))
