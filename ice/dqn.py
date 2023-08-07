@@ -201,4 +201,4 @@ class DqnTrainer:
         images = self.rollout(4)
         images = [game_imgs + [game_imgs[-1]]*30  for game_imgs in images] # repeat last frame
         images = itertools.chain.from_iterable(images)
-        plotting.save_gif(self.model_dir / f'/{name}.gif', images)
+        plotting.save_gif(self.model_dir / f'{name}.gif', images)
