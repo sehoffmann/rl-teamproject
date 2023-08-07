@@ -44,6 +44,8 @@ class ReplayBuffer:
         self.n_step = n_step
         self.gamma = gamma
 
+        self.rng = np.random.default_rng()
+
     def store(
             self,
             obs: np.ndarray,
@@ -93,7 +95,7 @@ class ReplayBuffer:
     def sample_batch(self, num_frames=1):
         """Sample a batch from the buffer"""
         assert len(self) >= self.batch_size
-        idxs = np.random.choice(self.size, size=self.batch_size, replace=False)
+        idxs = self.rng.integers(self.size, size=self.batch_size)
 
         return dict(
             obs=self.obs_buf[idxs],
@@ -257,12 +259,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         p_total = self.sum_tree.sum(0, len(self))
         segment = p_total / self.batch_size
 
+        entropy = self.rng.random(size=self.batch_size) * segment
+        upper_bounds = np.arange(self.batch_size) * segment + entropy
+
         # perform a random sample in each segment
         for i in range(self.batch_size):
-            a = segment * i
-            b = segment * (i + 1)
-            upper_bound = random.uniform(a, b)
-            idx = self.sum_tree.find_prefixsum_idx(upper_bound)
+            idx = self.sum_tree.find_prefixsum_idx(upper_bounds[i])
             indices.append(idx)
 
         return indices
