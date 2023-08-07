@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from decay import EpsilonDecay
-from environments import DiscreteHockey_BasicOpponent
+from environments import IcyHockey
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
 from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
@@ -13,19 +13,37 @@ import plotting
 
 from dqn_stenz import get_stenz
 
-def discrete_to_cont_action(discrete_action):
-    # TODO: better place for this??
-    return DiscreteHockey_BasicOpponent().discrete_to_continous_action(discrete_action)
 
-class DqnAgent:
+class NNAgent:
+    ENV = IcyHockey()
+
+    def __init__(self, model, device, frame_stacks=1):
+        self.model = model
+        self.device = device
+        self.stacker = FrameStacker(frame_stacks)
+
+    def reset(self):
+        self.stacker.clear()
+
+    def act(self, state):
+        state = self.stacker.append_and_stack(state)
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        action_discrete = self.model(state).argmax(dim=1).item()
+        return self.ENV.discrete_to_continous_action(action_discrete)
+
+    def save_model(self, path):
+        self.model.to('cpu')
+        torch.save(self.model, path)
+        self.model.to(self.device)
+
+
+class DqnAgent(NNAgent):
 
     def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None):
-        self.model = model
+        super().__init__(model, device, frame_stacks)
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
-        self.device = device
-        self.stacker = FrameStacker(frame_stacks)  # required for rollout
         self.epsilon_decay = epsilon_decay
         self.gamma = gamma
         self.target_update_frequency = target_update_frequency
@@ -35,13 +53,6 @@ class DqnAgent:
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
-
-    def reset(self):
-        self.stacker.clear()
-
-    def act(self, state):
-        state = self.stacker.append_and_stack(state)
-        return discrete_to_cont_action(self.select_action(state))
 
     def select_action(self, state, frame_idx=None):
         if frame_idx is not None:
@@ -53,8 +64,7 @@ class DqnAgent:
             action = np.random.randint(self.num_actions)
         else:
             state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            action = self.model(state).argmax(dim=1)
-            action = action.item()
+            action = self.model(state).argmax(dim=1).item()
 
         return action
 
@@ -104,15 +114,12 @@ class DqnAgent:
         loss = F.smooth_l1_loss(curr_q_value, target, reduction="none")
         return loss
 
-    def save_model(self, path):
-        self.model.to('cpu')
-        torch.save(self.model, path)
-        self.model.to(self.device)
-
 
 class DqnTrainer:
 
-    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader"):
+    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader", schedule=None):
+        assert schedule is None or schedule in ['lilith', 'basic', 'adv1', 'adv2']
+        
         self.model_dir = model_dir
         self.env = env
         self.agent = agent
@@ -121,6 +128,7 @@ class DqnTrainer:
         self.training_delay = training_delay
         self.update_frequency = update_frequency
         self.checkpoint_frequency = checkpoint_frequency
+        self.schedule = schedule
 
         self.stacker = FrameStacker(frame_stacks)        
         self.tracker = Tracker()
@@ -130,10 +138,9 @@ class DqnTrainer:
         self.agent_name = agent_name
         #self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
 
-
     def reset_env(self):
         self.stacker.clear()
-        state = self.env.reset()
+        state, info = self.env.reset()
         return self.stacker.append_and_stack(state)
 
     def step(self, action):
@@ -142,12 +149,10 @@ class DqnTrainer:
         return next_state, reward, done, info
 
     def train(self, num_frames: int):
-        
-
         # Warmup
         print('Filling replay buffer...')
         state = self.reset_env()
-        for _ in range(self.training_delay):
+        for idx in range(self.training_delay):
             action = self.agent.select_action(state, 1)
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
@@ -159,6 +164,8 @@ class DqnTrainer:
         print('Training...')
         state = self.reset_env()
         for frame_idx in range(1, num_frames + 1):
+            self._schedule_opponents(frame_idx)
+
             action = self.agent.select_action(state, frame_idx)
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
@@ -180,6 +187,22 @@ class DqnTrainer:
                 self.checkpoint(frame_idx)
 
         self.env.close()
+
+    def _copy_agent(self):
+        model = copy.deepcopy(self.agent.model)
+        model.eval().requires_grad_(False)
+        return NNAgent(model, self.device, self.agent.stacker.num_frames)
+
+    def _schedule_opponents(self, frame_idx):
+        if self.schedule == 'lilith':
+            if frame_idx == 500_000:
+                self.env.add_basic_opponent(weak=False)
+            if frame_idx >= 1_500_000 and frame_idx % 100_000 == 0:
+                agent = self._copy_agent()
+                self.env.add_opponent('self', agent, prob=5, rolling=5)
+        else:
+            if frame_idx == 500_000:
+                self.env.add_basic_opponent(weak=False)
 
     def _update(self, frame_idx):
         batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)

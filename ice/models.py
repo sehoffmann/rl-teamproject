@@ -6,27 +6,20 @@ import torch.nn.functional as F
 import numpy as np
 
 
-class DenseNet(nn.Module):
-    """
-    Attributes:
-        in_dim (int): input size
-        out_dim (int): output size
-        hidden_size (int): hidden size
-    """
+class Lilith(nn.Module):
+
     def __init__(
             self,
             in_dim: int,
             out_dim: int,
             hidden_size: int,
-            no_dueling=False,
+            dueling=True,
     ):
-        """Initialization."""
-        super(DenseNet, self).__init__()
+        super().__init__()
 
         self.out_dim = out_dim
         self.hidden_size = hidden_size
 
-        # set common feature layer
         self.feature_layer = nn.Sequential(
             nn.Linear(in_dim, self.hidden_size),
             nn.ReLU(),
@@ -40,7 +33,7 @@ class DenseNet(nn.Module):
             nn.Linear(self.hidden_size, self.out_dim)
         )
 
-        if not no_dueling:
+        if dueling:
             self.value = nn.Sequential(
                 nn.Linear(self.hidden_size, self.hidden_size),
                 nn.ReLU(),
@@ -51,7 +44,6 @@ class DenseNet(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward method implementation, return one Q-value for each action."""
         r = self.feature_layer(x)
         if self.value is None:
             Q = self.advantage(r)

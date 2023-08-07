@@ -49,6 +49,7 @@ class Tracker:
         self.episode_frame_idx = 0
         self.episode_cum_reward = 0
         self.winner_stats = []
+        self.opponent_stats = []
         self.reset()
     
     def reset(self):
@@ -56,6 +57,7 @@ class Tracker:
         self.interval_frame_idx = self.num_frames
         self.interval_metrics.clear()
         self.winner_stats = []
+        self.opponent_stats = []
 
     def _finalize_interval(self):
         # FPS
@@ -69,6 +71,11 @@ class Tracker:
         win_rate = np.mean(winner_stats == 1) * 100
         loss_rate = np.mean(winner_stats == -1) * 100
 
+        # Opponent stats
+        opponent_stats = np.array(self.opponent_stats)
+        oppoenents, counts = np.unique(opponent_stats, return_counts=True)
+        oppoennt_probs = counts / counts.sum()
+
         # Log to wandb
         metrics = {k: self.interval_metrics.mean(k) for k in self.interval_metrics}
         metrics.update({
@@ -79,6 +86,7 @@ class Tracker:
             'win_rate': win_rate,
             'loss_rate': loss_rate,
         })
+        metrics.update({f'opponents/{name}_p': prob for name, prob in zip(oppoenents, oppoennt_probs)})
         if self.wandb:
             wandb.log(metrics, step=self.num_frames)
 
@@ -107,6 +115,7 @@ class Tracker:
         self.episode_cum_reward = 0
         self.episode_frame_idx = self.num_frames
         self.winner_stats.append(info['winner'])
+        self.opponent_stats.append(info['opponent'])
 
     def add_checkpoint(self, elo_dict):
         for (ag_name, ag_elo) in elo_dict.items():
