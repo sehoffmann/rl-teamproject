@@ -24,6 +24,8 @@ class DqnAgent:
         self.target_update_frequency = target_update_frequency
         self.num_updates = 0
 
+        self.target_model.eval()
+
     def select_action(self, state, frame_idx=None):
         """Select an action from the input state and return state and action."""
         if frame_idx is not None:
@@ -79,22 +81,19 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, track_frequency=10_000):
+    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1):
         self.env = env
         self.agent = agent
         self.device = device
         self.replay_buffer = replay_buffer
         self.training_delay = training_delay
-        self.track_frequency = track_frequency
         self.update_frequency = update_frequency
 
         self.stacker = FrameStacker2(frame_stacks)        
         self.tracker = Tracker()
-        self._score = 0
 
 
     def reset_env(self):
-        self._score = 0
         self.stacker.clear()
         state = self.env.reset()
         return self.stacker.append_and_stack(state)
@@ -112,21 +111,18 @@ class DqnTrainer:
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
             state = next_state
-            self._score += reward
+            self.tracker.add_frame(reward)
 
             # if episode ends
             if done:
-                self.tracker.finish_game(self._score, info['winner'])
+                self.tracker.add_game(info)
                 state = self.reset_env()
 
             if frame_idx > self.training_delay and frame_idx % self.update_frequency == 0:
                 batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
                 loss, sample_losses = self.agent.update_model(batch, frame_idx)
                 self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
-
-            if frame_idx % self.track_frequency == 0:
-                print(frame_idx, self.tracker.num_games)
-                # print
+                self.tracker.add_update(loss)
     
         self.env.close()
 
