@@ -11,6 +11,8 @@ from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
 import plotting
 
+from dqn_stenz import get_stenz
+
 def discrete_to_cont_action(discrete_action):
     # TODO: better place for this??
     return DiscreteHockey_BasicOpponent().discrete_to_continous_action(discrete_action)
@@ -122,6 +124,7 @@ class DqnTrainer:
         self.tournament = HockeyTournamentEvaluation(restart=True)
         self.tournament.register_agent(agent_name, self.agent)
         self.agent_name = agent_name
+        self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
 
 
     def reset_env(self):
