@@ -10,7 +10,6 @@ from replay_buffer import PrioritizedReplayBuffer, FrameStacker
 from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
 import plotting
-from time_utils import timeit
 
 def discrete_to_cont_action(discrete_action):
     # TODO: better place for this??
@@ -184,19 +183,17 @@ class DqnTrainer:
         self.agent.model.train()
         return game_imgs
     
-    @timeit
     def update_elo(self, frame_idx):
         self.tournament.evaluate_agent(self.agent_name, self.agent, n_games=10)
         self.tracker.add_checkpoint(self.tournament.elo_leaderboard.elo_system)
 
     def checkpoint(self, frame_idx):
-
         self.update_elo(frame_idx)
 
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(self.model_dir / f'{name}.pt')
 
         images = self.rollout(4)
-        images = [game_imgs + game_imgs[-1]*30  for game_imgs in images] # repeat last frame
+        images = [game_imgs + [game_imgs[-1]]*30  for game_imgs in images] # repeat last frame
         images = itertools.chain.from_iterable(images)
         plotting.save_gif(self.model_dir / f'/{name}.gif', images)
