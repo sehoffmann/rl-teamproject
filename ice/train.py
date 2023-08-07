@@ -74,6 +74,7 @@ def train(config, model_dir, device):
         frame_stacks=config['frame_stacks'],
         update_frequency=config['update_frequency'],
         training_delay=config['warmup_frames'],
+        populate_replay_online=True,
     )
 
     trainer.train(config['frames'])

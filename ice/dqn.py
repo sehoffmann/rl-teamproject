@@ -7,6 +7,7 @@ import numpy as np
 from decay import EpsilonDecay
 from environments import DiscreteHockey_BasicOpponent
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
+from rollout_collection import RemoteReplayBuffer
 from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
 import plotting
@@ -112,7 +113,7 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader"):
+    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader", populate_replay_online=False):
         self.model_dir = model_dir
         self.env = env
         self.agent = agent
@@ -129,6 +130,8 @@ class DqnTrainer:
         self.tournament.register_agent(agent_name, self.agent)
         self.agent_name = agent_name
         #self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
+        self.populate_replaty_online = populate_replay_online
+        self.remote_replay_buffer = RemoteReplayBuffer(obs_dim=[self.env.observation_space.shape[0] * frame_stacks], size=100_000, batch_size=32, n_step=1, gamma=0.99)
 
 
     def reset_env(self):
@@ -146,7 +149,7 @@ class DqnTrainer:
 
         # Warmup
         print('Filling replay buffer...')
-        state = self.reset_env()
+        state = self.reset_env()   
         for _ in range(self.training_delay):
             action = self.agent.select_action(state, 1)
             next_state, reward, done, info = self.step(action)
@@ -182,7 +185,10 @@ class DqnTrainer:
         self.env.close()
 
     def _update(self, frame_idx):
-        batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
+        if np.random.random() < 0.5 and self.populate_replaty_online:
+            batch = self.remote_replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
+        else:
+            batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
         loss, sample_losses = self.agent.update_model(batch, frame_idx)
         self.tracker.add_update(loss)
         if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
