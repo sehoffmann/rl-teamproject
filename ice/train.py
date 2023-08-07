@@ -24,6 +24,7 @@ class DqnAgent:
         self.target_update_frequency = target_update_frequency
         self.num_updates = 0
 
+        self.target_model.requires_grad_(False)
         self.target_model.eval()
 
     def select_action(self, state, frame_idx=None):
@@ -70,12 +71,13 @@ class DqnAgent:
         curr_q_value = self.model(state).gather(1, action) # B x 1
         curr_q_value = curr_q_value.squeeze(1) # B
 
-        policy_actions = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
-        next_q_value = self.target_model(next_state).gather(1, policy_actions) # B x 1
-        next_q_value = next_q_value.squeeze(1).detach() # B
+        next_q_value = self.target_model(next_state)
+        best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+        next_value_f = next_q_value.gather(1, best_action) # B x 1
+        next_value_f = next_value_f.squeeze(1).detach() # B
         
         mask = 1 - done # B
-        target = (reward + self.gamma * next_q_value * mask).to(self.device)
+        target = (reward + self.gamma * next_value_f * mask)
         loss = F.smooth_l1_loss(curr_q_value, target, reduction="none")
         return loss
 
@@ -142,7 +144,7 @@ def main():
     else:
         device = torch.device("cpu")
 
-    warmup_frames = 30_000
+    warmup_frames = 50_000
 
     frame_stacks = 1
     buffer_size = 500_000
@@ -175,7 +177,7 @@ def main():
         obs_shape[0], 
         num_actions, 
         hidden_size=256, 
-        no_dueling=False
+        no_dueling=True
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     epsilon_decay = EpsilonDecay(num_frames=eps_decay_frames)
