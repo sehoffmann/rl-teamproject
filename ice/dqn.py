@@ -233,7 +233,7 @@ class DqnTrainer:
         self.tournament.evaluate_agent('self', self.agent, n_games=10)
         elos = self.tournament.elo_leaderboard.elo_system
         for name, elo in elos.items():
-            self.interval_metrics.add(f'elo/{name}', elo)
+            self.tracker.interval_metrics.add(f'elo/{name}', elo)
         self.agent.model.train()
 
     def checkpoint(self, frame_idx):
