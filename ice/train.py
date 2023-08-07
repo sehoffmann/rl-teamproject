@@ -9,16 +9,22 @@ from models import DenseNet
 from decay import EpsilonDecay
 from dqn import DqnAgent, DqnTrainer
 
+def create_model(args, num_actions, obs_shape):
+    
+    if args.checkpoint:
+        return torch.load(args.checkpoint)
+    else:
+        model = DenseNet(
+            obs_shape[0], 
+            num_actions, 
+            hidden_size=256, 
+            no_dueling=args.no_dueling
+        )
+        return model
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--no-wandb', action='store_true')
-    parser.add_argument('--no-per', action='store_true')
-    args = parser.parse_args()
-
+def train(args):
     wandb_mode = 'disabled' if args.no_wandb else 'online'
     wandb.init(project='ice', mode=wandb_mode)
-
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
@@ -26,15 +32,19 @@ def main():
 
     warmup_frames = 50_000
 
-    frame_stacks = 1
+    frame_stacks = args.frame_stacks
     buffer_size = 500_000
-    batch_size = 128
+    batch_size = 256
     lr = 1e-4
-    n_step = 3
     gamma = 0.99
     eps_decay_frames = 1_000_000
     beta_decay_frames = 3_000_000
     update_frequency = 2
+
+    if args.no_nstep:
+        n_step = 1
+    else:
+        n_step = 4
 
     # ENV
     env = DiscreteHockey_BasicOpponent()
@@ -54,19 +64,13 @@ def main():
         )
 
     # Model & DQN Agent
-    num_actions = env.action_space.n
-    model = DenseNet(
-        obs_shape[0], 
-        num_actions, 
-        hidden_size=256, 
-        no_dueling=False
-    ).to(device)
+    model = create_model(args, env.action_space.n, obs_shape).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     epsilon_decay = EpsilonDecay(num_frames=eps_decay_frames)
     dqn_agent = DqnAgent(
         model, 
         optimizer, 
-        num_actions,
+        env.action_space.n,
         device,
         epsilon_decay=epsilon_decay, 
         gamma=gamma**n_step,
@@ -84,6 +88,23 @@ def main():
     )
 
     trainer.train(2_000_000)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    # General
+    parser.add_argument('--checkpoint', type=str)
+
+    # Method
+    parser.add_argument('--no-wandb', action='store_true')
+    parser.add_argument('--no-per', action='store_true')
+    parser.add_argument('--no-dueling', action='store_true')
+    parser.add_argument('--no-nstep', action='store_true')
+    parser.add_argument('--frame-stacks', type=int, default=1)
+    
+    args = parser.parse_args()
+    train(args)
 
 
 if __name__ == '__main__':
