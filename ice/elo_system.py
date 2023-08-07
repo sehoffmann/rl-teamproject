@@ -22,7 +22,7 @@ class Agent(ABC):
 class EloLeaderboard(dict):
     """Ideas based on https://en.wikipedia.org/wiki/Elo_rating_system"""
     K = 32
-    R_INIT = 1500
+    R_INIT = 900
     SAVE_PATH = "elo_leaderboard.pkl"
     def __init__(self, load_stored= False):
 
@@ -31,8 +31,8 @@ class EloLeaderboard(dict):
         else:
             ## these values are determined by letting the two play 1000 times against each other
             self.elo_system = {
-                'basic_weak': 1440,
-                'basic_strong': 1560
+                'basic_weak': 885,
+                'basic_strong': 915
             }
 
     def _load_leaderboard(self):
