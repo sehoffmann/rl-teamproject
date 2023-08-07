@@ -106,6 +106,9 @@ class Tracker:
         self.episode_frame_idx = self.num_frames
         self.winner_stats.append(info['winner'])
 
+    def log(self, key, value):
+        self.interval_metrics.add(key, value)
+
     def save_csv(self, path):
         df = pd.DataFrame()
         for key in self.values:

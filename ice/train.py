@@ -1,28 +1,21 @@
 import argparse
 import wandb
 import torch
-import torch.nn.functional as F
-import numpy as np
-import copy
+import torch.functional as F
 
 from tracking import Tracker, TrackerElo
 from replay_buffer import FrameStacker2, ReplayBuffer, PrioritizedReplayBuffer
-from discretization import DiscreteHockey_BasicOpponent
+from environments import DiscreteHockey_BasicOpponent
+import numpy as np
+import copy
+
 from models import DenseNet
 from decay import EpsilonDecay
+from dqn import DqnAgent, DqnTrainer
 
 from elo_system import HockeyTournamentEvaluation
 from time_utils import timeit
 
-    
-class TrackerElo(Tracker):
-
-    def __init__(self, agent_name: str, agent_instance, wandb=True, tracking_frequency=5000):
-        super().__init__(wandb, tracking_frequency)
-        self.tournament = HockeyTournamentEvaluation(restart=True)
-        self.tournament.register_agent(agent_name, agent_instance)
-        self.agent_name = agent_name
-        self.agent_instance = agent_instance
 
     @timeit
     def _update_elo(self):
@@ -122,7 +115,7 @@ class DqnAgent:
 
 class DqnTrainer:
 
-    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1):
+    def __init__(self, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, agent_name="laserboy"):
         self.env = env
         self.agent = agent
         self.device = device
@@ -131,9 +124,23 @@ class DqnTrainer:
         self.update_frequency = update_frequency
 
         self.stacker = FrameStacker2(frame_stacks)        
-        # self.tracker = Tracker()
-        self.tracker = TrackerElo(agent_name='DQN', agent_instance=agent)
+        self.tracker = Tracker()
+        self.tournament = HockeyTournamentEvaluation(restart=True)
 
+        self.tournament.register_agent(agent_name, agent)
+
+    @timeit
+    def _update_elo(self):
+        if self.num_games % 100 == 0:
+            # let all play sometime to reset elo
+            self.tournament.random_plays(n_plays=1)    
+        else:
+            self.tournament.evaluate_agent(self.agent_name, self.agent_instance, n_games=1, verbose=True)
+        for (ag_name, ag_elo) in self.tournament.elo_leaderboard.elo_system.items():
+            self.interval_metrics.add(
+                ag_name, 
+                self.tournament.elo_leaderboard.get_elo_score(ag_elo)
+            )
 
     def reset_env(self):
         self.stacker.clear()
@@ -167,19 +174,22 @@ class DqnTrainer:
                 if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
                     self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
                 
+def create_model(args, num_actions, obs_shape):
     
-        self.env.close()
+    if args.checkpoint:
+        return torch.load(args.checkpoint)
+    else:
+        model = DenseNet(
+            obs_shape[0], 
+            num_actions, 
+            hidden_size=256, 
+            no_dueling=args.no_dueling
+        )
+        return model
 
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--no-wandb', action='store_true')
-    parser.add_argument('--no-per', action='store_true')
-    args = parser.parse_args()
-
+def train(args):
     wandb_mode = 'disabled' if args.no_wandb else 'online'
     wandb.init(project='ice', mode=wandb_mode)
-
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
@@ -187,15 +197,19 @@ def main():
 
     warmup_frames = 50_000
 
-    frame_stacks = 1
+    frame_stacks = args.frame_stacks
     buffer_size = 500_000
-    batch_size = 128
+    batch_size = 256
     lr = 1e-4
-    n_step = 3
     gamma = 0.99
     eps_decay_frames = 1_000_000
     beta_decay_frames = 3_000_000
     update_frequency = 2
+
+    if args.no_nstep:
+        n_step = 1
+    else:
+        n_step = 4
 
     # ENV
     env = DiscreteHockey_BasicOpponent()
@@ -215,19 +229,13 @@ def main():
         )
 
     # Model & DQN Agent
-    num_actions = env.action_space.n
-    model = DenseNet(
-        obs_shape[0], 
-        num_actions, 
-        hidden_size=256, 
-        no_dueling=True
-    ).to(device)
+    model = create_model(args, env.action_space.n, obs_shape).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     epsilon_decay = EpsilonDecay(num_frames=eps_decay_frames)
     dqn_agent = DqnAgent(
         model, 
         optimizer, 
-        num_actions,
+        env.action_space.n,
         device,
         epsilon_decay=epsilon_decay, 
         gamma=gamma**n_step,
@@ -245,6 +253,23 @@ def main():
     )
 
     trainer.train(2_000_000)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    # General
+    parser.add_argument('--checkpoint', type=str)
+
+    # Method
+    parser.add_argument('--no-wandb', action='store_true')
+    parser.add_argument('--no-per', action='store_true')
+    parser.add_argument('--no-dueling', action='store_true')
+    parser.add_argument('--no-nstep', action='store_true')
+    parser.add_argument('--frame-stacks', type=int, default=1)
+    
+    args = parser.parse_args()
+    train(args)
 
 
 if __name__ == '__main__':

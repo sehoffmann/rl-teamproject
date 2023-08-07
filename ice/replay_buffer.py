@@ -283,7 +283,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return weight
 
 
-class FrameStacker2:
+class FrameStacker:
     def __init__(self, num_frames=1):
         self.num_frames = num_frames  # how many frames to stack together
         self.buffer = deque(maxlen=num_frames)
