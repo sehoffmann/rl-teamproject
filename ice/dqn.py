@@ -1,4 +1,5 @@
 import copy
+import itertools
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -6,6 +7,7 @@ import numpy as np
 from decay import EpsilonDecay
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
 from tracking import Tracker
+import plotting
 
 class DqnAgent:
 
@@ -24,7 +26,6 @@ class DqnAgent:
         self.target_model.eval()
 
     def select_action(self, state, frame_idx=None):
-        """Select an action from the input state and return state and action."""
         if frame_idx is not None:
             epsilon = self.epsilon_decay(frame_idx)
         else:
@@ -142,7 +143,28 @@ class DqnTrainer:
         if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
             self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
 
+    def rollout(self, num_games: int):
+        self.agent.model.eval()
+        state = self.reset_env()
+        game_imgs = []
+        for _ in range(num_games):
+            imgs = [self.env.render(mode='rgb_array')]
+            while True:
+                action = self.agent.select_action(state)
+                state, _, done, _ = self.step(action)
+                imgs.append(self.env.render(mode='rgb_array'))
+                if done:
+                    state = self.reset_env()
+                    break
+            game_imgs.append(imgs)
+        self.agent.model.train()
+        return game_imgs
 
     def checkpoint(self, frame_idx):
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(f'{name}.pt')
+
+        images = self.rollout(4)
+        images = [game_imgs + game_imgs[-1]*30  for game_imgs in images] # repeat last frame
+        images = itertools.chain.from_iterable(images)
+        plotting.save_gif(f'{name}.gif', images)
