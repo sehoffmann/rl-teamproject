@@ -1,6 +1,8 @@
 /slurm-*.out
 *.pt
 *.gif
+/wandb
+/models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
