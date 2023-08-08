@@ -1,21 +1,24 @@
 # https://github.com/openai/baselines/blob/master/baselines/common/segment_tree.py
 
 import operator
-import pysegmenttree
-import numpy as np
+
 
 class SegmentTree(object):
     def __init__(self, capacity, operation, neutral_element):
         """Build a Segment Tree data structure.
+
         https://en.wikipedia.org/wiki/Segment_tree
+
         Can be used as regular array, but with two
         important differences:
+
             a) setting item's value is slightly slower.
                It is O(lg capacity) instead of O(1).
             b) user has access to an efficient ( O(log segment size) )
                `reduce` operation which reduces `operation` over
                a contiguous subsequence of items in the array.
-        Parameters
+
+        Paramters
         ---------
         capacity: int
             Total size of the array - must be a power of two.
@@ -36,10 +39,10 @@ class SegmentTree(object):
         if start == node_start and end == node_end:
             return self._value[node]
         mid = (node_start + node_end) // 2
-        if end <= mid:  # search left
+        if end <= mid:
             return self._reduce_helper(start, end, 2 * node, node_start, mid)
         else:
-            if mid + 1 <= start:  # search right
+            if mid + 1 <= start:
                 return self._reduce_helper(start, end, 2 * node + 1, mid + 1, node_end)
             else:
                 return self._operation(
@@ -50,21 +53,25 @@ class SegmentTree(object):
     def reduce(self, start=0, end=None):
         """Returns result of applying `self.operation`
         to a contiguous subsequence of the array.
+
             self.operation(arr[start], operation(arr[start+1], operation(... arr[end])))
+
         Parameters
         ----------
         start: int
             beginning of the subsequence
         end: int
             end of the subsequences
+
         Returns
         -------
         reduced: obj
             result of reducing self.operation over the specified range of array elements.
         """
-        if end is None or end < 0 or end > self._capacity:
+        if end is None:
             end = self._capacity
-
+        if end < 0:
+            end += self._capacity
         end -= 1
         return self._reduce_helper(start, end, 1, 0, self._capacity - 1)
 
@@ -84,9 +91,6 @@ class SegmentTree(object):
         assert 0 <= idx < self._capacity
         return self._value[self._capacity + idx]
 
-    def __str__(self):
-        return str(self._value[self._capacity:])
-
 
 class SumSegmentTree(SegmentTree):
     def __init__(self, capacity):
@@ -103,13 +107,16 @@ class SumSegmentTree(SegmentTree):
     def find_prefixsum_idx(self, prefixsum):
         """Find the highest index `i` in the array such that
             sum(arr[0] + arr[1] + ... + arr[i - i]) <= prefixsum
+
         if array values are probabilities, this function
         allows to sample indexes according to the discrete
         probability efficiently.
+
         Parameters
         ----------
-        prefixsum: float
+        perfixsum: float
             upperbound on the sum of array prefix
+
         Returns
         -------
         idx: int
@@ -124,27 +131,6 @@ class SumSegmentTree(SegmentTree):
                 prefixsum -= self._value[2 * idx]
                 idx = 2 * idx + 1
         return idx - self._capacity
-    
-class FastSumSegmentTree():
-    def __init__(self, capacity) -> None:
-        self.tree = pysegmenttree.stree([0.0] * capacity, func=pysegmenttree.QueryFunction.sum)
-    
-    def sum(self, start=0, end=None):
-        """Returns arr[start] + ... + arr[end]"""
-        return self.tree.query(start, end)
-    
-    def find_prefix_idx(self, prefixsum):
-        assert 0 <= prefixsum <= self.sum() + 1e-5
-        idx = 1
-        while idx < self._capacity:  # while non-leaf
-            if self._value[2 * idx] > prefixsum:
-                idx = 2 * idx
-            else:
-                prefixsum -= self._value[2 * idx]
-                idx = 2 * idx + 1
-        return idx - self._capacity
-    
-
 
 
 class MinSegmentTree(SegmentTree):
@@ -159,17 +145,3 @@ class MinSegmentTree(SegmentTree):
         """Returns min(arr[start], ...,  arr[end])"""
 
         return super(MinSegmentTree, self).reduce(start, end)
-
-
-if __name__ == '__main__':
-    c = SumSegmentTree(32)
-    c.__setitem__(0, 1.)
-    c.__setitem__(1, 1.)
-    print(c)
-    print(c.find_prefixsum_idx(0.2))
-    print(c.find_prefixsum_idx(1.2))
-
-    tree2 = pysegmenttree.stree([0] * 32)
-    tree2.update(0, 1)
-    tree2.update(1, 3)
-    print(tree2.query(0, 1))
