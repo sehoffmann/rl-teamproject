@@ -3,10 +3,10 @@ import numpy as np
 import torch
 from laserhockey.hockey_env import HockeyEnv
 
-def get_stenz(path):
+def get_stenz(path, device):
     env = HockeyEnv()
     stenz = DQNAgent(env.observation_space, env.action_space, eps=0.0)
-    stenz.load_checkpoint(path)
+    stenz.load_checkpoint(path, device)
     return stenz
 
 class DQNAgent(object):
@@ -135,8 +135,8 @@ class DQNAgent(object):
         }
         torch.save(checkpoint, path)
 
-    def load_checkpoint(self, path):
-        checkpoint = torch.load(path)
+    def load_checkpoint(self, path, device):
+        checkpoint = torch.load(path, map_location=device)
         self.Q.load_state_dict(checkpoint['model_state_dict'])
         self.Q_target.load_state_dict(self.Q.state_dict())
 
