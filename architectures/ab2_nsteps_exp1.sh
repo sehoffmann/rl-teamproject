@@ -1,3 +1,5 @@
+#!/bin/bash
+
 python ice/train.py \
     -n "ab2-nsteps1" \
     --model "lilith" \
