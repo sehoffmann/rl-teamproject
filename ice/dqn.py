@@ -51,8 +51,16 @@ class NNAgent:
     @classmethod
     def load_model(cls, path, device):
         path = Path(path)
-        with open(path.parent / 'config.json', 'r') as f:
-            config = json.load(f)
+        try:
+            with open(path.parent / f'{path.stem}.json', 'r') as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            config = None
+
+        if config is None:
+            with open(path.parent / 'config.json', 'r') as f:
+                config = json.load(f)
+
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
         return cls(model, device, frame_stacks=config['frame_stacks'])
