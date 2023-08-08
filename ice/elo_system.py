@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
+import json
 
-import pickle
-import itertools
 import torch
 
 from PIL import Image
@@ -19,50 +18,54 @@ class Agent(ABC):
     def act(self, obs):
         pass
 
+
 class EloLeaderboard(dict):
     """Ideas based on https://en.wikipedia.org/wiki/Elo_rating_system"""
-    K = 32
-    R_INIT = 900
-    SAVE_PATH = "elo_leaderboard.pkl"
-    def __init__(self, load_stored= False):
 
-        if load_stored:
-            self._load_leaderboard()
-        else:
-            ## these values are determined by letting the two play 1000 times against each other
-            self.elo_system = {
-                'basic_weak': 885,
-                'basic_strong': 915
-            }
+    def __init__(self, start_elo=900, K=32, default_elos=True):
+        self.start_elo = start_elo
+        self.K = K
+        self.elos = {}
+        if default_elos:
+            self.load_default_ratings()
 
-    def _load_leaderboard(self):
-        try:
-            with open(EloLeaderboard.SAVE_PATH, "rb") as fp:
-                self.elo_system = pickle.load(file=fp)
-        except FileNotFoundError:
-            print("creating new leaderboard since not exists")
-            self.elo_system = {}
+    def __getitem__(self, key):
+        return self.elos[key]
 
-    def _store_leaderboard(self):
-        with open(EloLeaderboard.SAVE_PATH, "wb") as fp:
-            pickle.dump(self.elo_system, file=fp)
+    def __setitem__(self, key, value):
+        self.elos[key] = value
 
-    def get_elo_score(self, agent_name: str):
-        if agent_name not in self.elo_system:
-            self.elo_system[agent_name] = EloLeaderboard.R_INIT
-        return self.elo_system[agent_name]
+    def __contains__(self, key):
+        return key in self.elos
     
-    def set_elo_score(self, agent_name: str, value: int):
-        self.elo_system[agent_name] = value
+    def __len__(self):
+        return len(self.elos)
+    
+    def __iter__(self):
+        return iter(self.elos)
+    
+    def __delitem__(self, key):
+        del self.elos[key]
+
+    def add_agent(self, agent, elo=None):
+        if agent not in self:
+            self[agent] = elo if elo is not None else self.start_elo
+        else:
+            raise ValueError(f"Agent {agent} already in leaderboard")
     
     def get_win_probs(self, agent_a: str, agent_b: str):
-        rating_a = self.get_elo_score(agent_a)
-        rating_b = self.get_elo_score(agent_b)
-        delta = rating_b - rating_a
+        delta = self[agent_b] - self[agent_a]
         p_a_wins = 1 / (1 + 10**(delta / 400))
         return p_a_wins, (1 - p_a_wins)
     
-    def update_rating(self, pairing = ("agent_a", "agent_b"), result = (0, 0), save=True):
+    def calculate_new_elos(self, agent_a: str, agent_b: str, result):
+        result_a, result_b = result
+        expect_a, expect_b = self.get_win_probs(agent_a, agent_b)
+        new_a = self[agent_a] + self.K * (result_a - expect_a)
+        new_b = self[agent_b] + self.K * (result_b - expect_b)
+        return new_a, new_b
+
+    def update_rating(self, agent_a, agent_b, result):
         """Register the result of the pairing. 
         0 = lost,
         1 = won,
@@ -71,23 +74,28 @@ class EloLeaderboard(dict):
         e.g. player 1 beat player 2: (1, 0)
         a draw: (0.5, 0.5)
         """
-        agent_a, agent_b = pairing
-        result_a, result_b = result
-        rating_a = self.get_elo_score(agent_a)
-        rating_b = self.get_elo_score(agent_b)
-        expect_a, expect_b = self.get_win_probs(agent_a, agent_b)
-        new_a = rating_a + EloLeaderboard.K * (result_a - expect_a)
-        new_b = rating_b + EloLeaderboard.K * (result_b - expect_b)
+        self[agent_a], self[agent_b] = self.calculate_new_elos(agent_a, agent_b, result)
+        return self[agent_a], self[agent_b]
 
-        if save:
-            self.set_elo_score(agent_a, value=new_a)
-            self.set_elo_score(agent_b, value=new_b)
-            self._store_leaderboard()
+    def load_default_ratings(self):
+        self.elos['basic_weak'] = 885
+        self.elos['basic_strong'] = 915
 
-        return new_a, new_b
+    def save(self, path):
+        with open(path, "w") as fp:
+            json.dump(self.elos, fp, indent=4)
+
+    def load(self, path):
+        with open(path, "r") as fp:
+            self.elos = json.load(fp)
+
+    def clone(self):
+        new_leaderboard = EloLeaderboard(start_elo=self.start_elo, K=self.K, default_elos=False)
+        new_leaderboard.elos = self.elos.copy()
+        return new_leaderboard
 
     def __str__(self):
-        sorted_leaderboard = list(sorted(self.elo_system.items(), key=lambda x: x[1], reverse=True))
+        sorted_leaderboard = list(sorted(self.elos.items(), key=lambda x: x[1], reverse=True))
         return f"{sorted_leaderboard}"
     
 @torch.no_grad()
@@ -127,74 +135,78 @@ def play_game(agent1, agent2, max_steps = 250, render=True, action_repeats=1):
     return r, states, result
 
 class HockeyTournamentEvaluation():
-    def __init__(self, restart=False, save=False):
-        """If restart = True, it starts with only the weak and strong opp"""
-        self.elo_leaderboard = EloLeaderboard(load_stored=not restart)
-        self.agent_register = {
-            'basic_weak': lh.BasicOpponent(),
-            'basic_strong': lh.BasicOpponent(weak=False)
-        }
-        self.save = save
+    def __init__(self, add_basics=True, start_elo=900, K=32, default_elos=True):
+        self.leaderboard = EloLeaderboard(start_elo=start_elo, K=K, default_elos=default_elos)
+        self.agents = {}
+        if add_basics:
+            self.agents['basic_weak'] = lh.BasicOpponent()
+            self.agents['basic_strong'] = lh.BasicOpponent(weak=False)
     
-    def get_agent_instance(self, agent_name):
-        try:
-            return self.agent_register[agent_name]
-        except KeyError:
-            raise ValueError("Agent not registered, use register function")
+    def __getitem__(self, key):
+        return self.agents[key]
 
-    def register_agent(self, agent_name: str, agent, update=False, n_welcome_games=1):
-        """Call this once to add your agent to the rating system
-        you can also call it again to update the instance associated with the given agent name.
-        Note: when you register a new agent, it gets evaluated once.
-        """
-        self.agent_register[agent_name] = agent
-        if not update:
-            self.evaluate_agent(agent_name, agent, n_games=n_welcome_games)
+    def __setitem__(self, key, value):
+        self.agents[key] = value
 
-    def is_registered(self, agent_name):
-        return agent_name in self.agent_register.keys()
+    def __delitem__(self, key):
+        del self.agents[key]
+
+    def __contains__(self, key):
+        return key in self.agents
+
+    def __len__(self):
+        return len(self.agents)
     
-    def get_pairing(self, agent_name):
+    def __iter__(self):
+        return iter(self.agents)
+    
+    def add_agent(self, name, agent, elo=None, num_games=0):
+        if name in self.agents:
+            raise ValueError("Agent already registered")
+        self.agents[name] = agent
+        self.leaderboard.add_agent(name, elo=elo)
+        if num_games > 0:
+            self.evaluate_agent(name, agent, n_games=num_games)
+    
+    def get_pairing(self, name):
         alpha = 0.5 # softness factor
-        agent_elo = self.elo_leaderboard.get_elo_score(agent_name)
-        sample_weights = [np.abs(agent_elo - opp_elo)**alpha for opp_elo in self.elo_leaderboard.elo_system.values()]        
+        elo = self.leaderboard[name]
+        sample_weights = [np.abs(elo - opp_elo)**alpha for opp_elo in self.leaderboard.elos.values()]        
         sample_weights = np.array(sample_weights) / sum(sample_weights)
         # print(sample_weights)
-        opponents = np.random.choice(list(self.elo_leaderboard.elo_system.keys()), size=1, p=sample_weights)
-        return (agent_name, opponents[0])
+        opponents = np.random.choice(list(self.leaderboard.elos.keys()), size=1, p=sample_weights)
+        return (name, opponents[0])
     
-    def random_plays(self, n_plays=10):
-        for (name, agent) in self.agent_register.items():
-            for _ in range(n_plays):
-                (name_1, name_2) = self.get_pairing(name)
-                self.run_n_games(name_1, name_2, agent, self.agent_register[name_2])
+    def random_plays(self, n_plays=10, verbose=False):
+        names = list(self.agents.keys())
+        for _ in range(n_plays):
+            name1 = np.random.choice(names)
+            _, name2 = self.get_pairing(name1) 
+            _, _, res = play_game(self[name1], self[name2])
+            new_elo1, new_elo2 = self.leaderboard.update_rating(name1, name2, result=res)
+            if verbose:
+                print(f'{name1} ({new_elo1:.1f}) vs {name2} ({new_elo2:.1f}): {res}')
 
-    def run_n_games(self, agent_1_name, agent_2_name, agent_1, agent_2, n = 1, save_gif=False):
-        """Note: n games SAME pairing"""
+    def run_n_games(self, name1, name2, n = 1, save_gif=False):
         for _ in range(n):
-            if save_gif:
-                _, states, res = play_game(agent_1, agent_2, render=True)
-            else:
-                _, states, res = play_game(agent_1, agent_2, render=False)
-            _ = self.elo_leaderboard.update_rating(pairing=(agent_1_name, agent_2_name), result=res)
-        # print(res)
+            _, states, res = play_game(self[name1], self[name2], render=save_gif)
+            _ = self.leaderboard.update_rating(name1, name2, result=res)
+        
         if save_gif:
-            states[0].save(f'tournament_{agent_1_name}_{agent_2_name}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000)
+            states[0].save(f'tournament_{name1}_{name2}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000)
 
-    def evaluate_agent(self, agent_name, agent, n_games=1, verbose=False):
-        assert self.is_registered(agent_name), "register your agent for this tournament to receive elo"
+    def evaluate_agent(self, name, agent, n_games=1, verbose=False):
+        assert name in self, "register your agent for this tournament to receive elo"
         for _ in range(n_games):
             # note: n games varying pairings
-            (name_agent_1, name_agent_2) = self.get_pairing(agent_name)
+            (name_agent_1, name_agent_2) = self.get_pairing(name)
             if verbose:
                 print(f"paring: {name_agent_1}, {name_agent_2}")
-            agent_1_instance = agent
-            agent_2_instance = self.get_agent_instance(name_agent_2)
-            self.run_n_games(name_agent_1, name_agent_2, agent_1_instance, agent_2_instance, n=1)
-        return self.elo_leaderboard.get_elo_score(agent_name)
+            self.run_n_games(name_agent_1, name_agent_2, n=1)
+        return self.leaderboard[name]
 
     def __str__(self):
-        return self.elo_leaderboard.__str__()
+        return self.leaderboard.__str__()
 
 
 if __name__ == "__main__":
