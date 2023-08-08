@@ -9,11 +9,11 @@ from pathlib import Path
 
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from environments import IcyHockey
-from models import Lilith
+from models import Lilith, LSTM
 from decay import EpsilonDecay
 from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 
-MODELS = ['lilith']
+MODELS = ['lilith', 'LSTM-small', 'LSTM-big']
 
 def create_model(config, num_actions, obs_shape):
     cp_path = config['checkpoint']
@@ -25,6 +25,23 @@ def create_model(config, num_actions, obs_shape):
             obs_shape[1]*obs_shape[0], 
             num_actions, 
             hidden_size=256, 
+            dueling=config['dueling'],
+        )
+        return model
+    elif config['model'] == 'LSTM-small':
+        model = LSTM(
+            obs_shape[1], 
+            num_actions, 
+            hidden_size=128,
+            num_head_layers=1,
+            dueling=config['dueling'],
+        )
+    elif config['model'] == 'LSTM-big':
+        model = LSTM(
+            obs_shape[1], 
+            num_actions, 
+            hidden_size=256,
+            num_feature_layers=4,
             dueling=config['dueling'],
         )
         return model
