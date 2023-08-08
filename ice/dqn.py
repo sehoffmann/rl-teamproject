@@ -59,7 +59,7 @@ class NNAgent:
     
     @classmethod
     def load_lilith_weak(cls, device):
-        path = Path('models') / 'lilith-weak_20230807_23:59/frame_0001800000.pt'
+        path = Path('baselines') / 'lilith-weak.pt'
         return cls.load_model(path, device)
 
 class DqnAgent(NNAgent):
@@ -161,7 +161,7 @@ class DqnTrainer:
         self.tournament = HockeyTournamentEvaluation(restart=True)
         self.tournament.register_agent('self', self.agent)
         self.tournament.register_agent('lilith_weak', NNAgent.load_lilith_weak(self.device), n_welcome_games=10)
-        #self.tournament.register_agent('stenz', get_stenz(), n_welcome_games=10)
+        self.tournament.register_agent('stenz', get_stenz(), n_welcome_games=10)
 
     def reset_env(self):
         self.stacker.clear()
@@ -193,7 +193,7 @@ class DqnTrainer:
 
     def train(self, num_frames: int):
         # Warmup
-        print('Filling replay buffer...')
+        print('Warming up...')
         state = self.reset_env()
         for idx in range(self.training_delay):
             action = self.agent.select_action(state, 1)
@@ -249,9 +249,9 @@ class DqnTrainer:
             if frame_idx == 1:
                 agent = NNAgent.load_lilith_weak(self.device)
                 self.env.add_opponent('lilith_weak', agent, prob=5)
-            if frame_idx >= 2_000_000 and frame_idx % 500_000 == 0:
+            if frame_idx >= 2_000_000 and frame_idx % 200_000 == 0:
                 agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=7, rolling=5)
+                self.env.add_opponent('self', agent, prob=5, rolling=8)
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
