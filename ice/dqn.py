@@ -220,7 +220,6 @@ class DqnTrainer:
         state = self.reset_env()
         for frame_idx in range(1, num_frames + 1):
             self._schedule_opponents(frame_idx)
-
             action = self.agent.select_action(state, frame_idx)
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)

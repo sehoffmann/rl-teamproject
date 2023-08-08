@@ -22,7 +22,7 @@ def create_model(config, num_actions, obs_shape):
         return torch.load(cp_path)
     elif config['model'] == 'lilith':
         model = Lilith(
-            obs_shape[0], 
+            obs_shape[1]*obs_shape[0], 
             num_actions, 
             hidden_size=256, 
             dueling=config['dueling'],
@@ -34,7 +34,7 @@ def train(config, model_dir, device):
     env = IcyHockey()
     
     # Replay Buffer
-    obs_shape = [env.observation_space.shape[0] * config['frame_stacks']]
+    obs_shape = [config['frame_stacks'], env.observation_space.shape[0]]
     if not config['priority_rp']:
         replay_buffer = ReplayBuffer(obs_shape, config['buffer_size'], config['batch_size'])
     else:

@@ -284,8 +284,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 
 class FrameStacker:
-    def __init__(self, num_frames=1):
+    def __init__(self, num_frames=1, mode='stack'):
+        assert mode in ['stack', 'concat']
         self.num_frames = num_frames  # how many frames to stack together
+        self.mode = mode
         self.buffer = deque(maxlen=num_frames)
         self._stacked = None
 
@@ -296,13 +298,18 @@ class FrameStacker:
         
         assert len(self.buffer) > 0
         if self.num_frames == 1:
-            self._stacked = self.buffer[0]
+            self._stacked = np.array(self.buffer[0])
+            if self.mode == 'stack':
+                self._stacked = self._stacked[None, :]
         else:
             buffer = self.buffer
             if len(buffer) < self.num_frames:
                 n_repeats = self.num_frames - len(buffer)
                 buffer = [buffer[0]] * n_repeats + list(self.buffer) # repeat the first element
-            self._stacked = np.concatenate(buffer, axis=-1)
+            if self.mode == 'stack':
+                self._stacked = np.stack(buffer, axis=0)
+            else:
+                self._stacked = np.concatenate(buffer, axis=-1)
         return self._stacked
 
     def clear(self):

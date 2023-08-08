@@ -44,6 +44,8 @@ class Lilith(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = torch.flatten(x, start_dim=1)
+
         r = self.feature_layer(x)
         if self.value is None:
             Q = self.advantage(r)
