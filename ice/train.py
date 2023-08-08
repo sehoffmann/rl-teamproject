@@ -67,7 +67,7 @@ def train(config, model_dir, device):
         scheduler=scheduler,
     )
 
-    assert not config['lili_bootstrap'] or config['warmup_frames'] >= 150_000
+    assert not config['lilith_bootstrap'] or config['warmup_frames'] >= 150_000
 
     # Trainer
     trainer = DqnTrainer(

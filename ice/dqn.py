@@ -67,7 +67,7 @@ class NNAgent:
     
     @classmethod
     def load_lilith_weak(cls, device):
-        path = Path('baselines') / 'lilith-weak.pt'
+        path = Path('baselines') / 'lilith_weak.pt'
         return cls.load_model(path, device)
 
 class DqnAgent(NNAgent):
@@ -166,10 +166,10 @@ class DqnTrainer:
         self.stacker = FrameStacker(frame_stacks)        
         self.tracker = Tracker()
 
-        self.tournament = HockeyTournamentEvaluation(restart=True)
+        self.tournament = HockeyTournamentEvaluation()
         self.tournament.add_agent('self', self.agent)
         self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
-        self.tournament.add_agent('stenz', get_stenz(), num_games=10)
+        self.tournament.add_agent('stenz', get_stenz())
 
     def reset_env(self):
         self.stacker.clear()
