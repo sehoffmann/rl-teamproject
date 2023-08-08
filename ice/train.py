@@ -75,7 +75,7 @@ def train(config, model_dir, device):
         scheduler=scheduler,
     )
 
-    assert not config['lilith_bootstrap'] or config['warmup_frames'] >= 150_000
+    assert not config['lilith_bootstrap'] or config['warmup_frames'] >= config['bootstrap_frames']
 
     # Trainer
     trainer = DqnTrainer(
@@ -86,14 +86,14 @@ def train(config, model_dir, device):
         device,
         frame_stacks=config['frame_stacks'],
         update_frequency=config['update_frequency'],
-        training_delay=config['warmup_frames'] - 150_000 if config['lilith_bootstrap'] else config['warmup_frames'],
+        training_delay=config['warmup_frames'] - config['bootstrap_frames'] if config['lilith_bootstrap'] else config['warmup_frames'],
         schedule=config['schedule'],
     )
 
     # Prepopulate using lilith-weak
     if config['lilith_bootstrap']:
         lilith_weak = NNAgent.load_lilith_weak(device)
-        trainer.prepopulate(lilith_weak, 150_000)
+        trainer.prepopulate(lilith_weak, config['bootstrap_frames'])
 
     trainer.train(config['frames'])
 
@@ -133,6 +133,7 @@ def make_config(args):
         'eps_decay': args.eps_decay,
         'beta_decay': args.beta_decay,
         'lilith_bootstrap': not args.no_lilith_bootstrap,
+        'bootstrap_frames': 300_000,
         'rampup': args.rampup,
     }
     return config
