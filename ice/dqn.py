@@ -46,7 +46,7 @@ class NNAgent:
     def clone(self):
         model = copy.deepcopy(self.model)
         model.eval().requires_grad_(False)
-        return NNAgent(model, self.device, self.stacker.num_frames)
+        return NNAgent(model, self.device, self.stacker.num_frames, softactions=self.softactions)
 
     def save_model(self, path):
         self.model.to('cpu')
@@ -68,7 +68,7 @@ class NNAgent:
 
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
-        return cls(model, device, frame_stacks=config['frame_stacks'])
+        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config['softactions'])
     
     @classmethod
     def load_lilith_weak(cls, device):
