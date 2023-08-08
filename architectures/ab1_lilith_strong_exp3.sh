@@ -1,7 +1,7 @@
 #!/bin/bash
 
 python ice/train.py \
-    -n "lilith-strong-bt300k-rampup" \
+    -n "ab1-lilith-strong-bt300k-rampup" \
     --model "lilith" \
     --schedule "basic" \
     -f 5000000 \

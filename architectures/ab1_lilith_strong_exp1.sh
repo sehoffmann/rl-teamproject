@@ -1,7 +1,7 @@
 #!/bin/bash
 
 python ice/train.py \
-    -n "lilith-strong-plain" \
+    -n "ab1-lilith-strong-plain" \
     --model "lilith" \
     --schedule "basic" \
     -f 5000000 \
