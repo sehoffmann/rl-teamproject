@@ -73,6 +73,7 @@ def train(config, model_dir, device):
         gamma=config['gamma']**config['nsteps'],
         no_double=not config['double_q'],
         scheduler=scheduler,
+        softactions=config['softactions'],
     )
 
     assert config['warmup_frames'] >= config['bootstrap_frames']
