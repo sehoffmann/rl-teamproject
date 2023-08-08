@@ -167,9 +167,9 @@ class DqnTrainer:
         self.tracker = Tracker()
 
         self.tournament = HockeyTournamentEvaluation(restart=True)
-        self.tournament.register_agent('self', self.agent)
-        self.tournament.register_agent('lilith_weak', NNAgent.load_lilith_weak(self.device), n_welcome_games=10)
-        self.tournament.register_agent('stenz', get_stenz(), n_welcome_games=10)
+        self.tournament.add_agent('self', self.agent)
+        self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
+        self.tournament.add_agent('stenz', get_stenz(), num_games=10)
 
     def reset_env(self):
         self.stacker.clear()
@@ -290,10 +290,13 @@ class DqnTrainer:
     
     def update_elo(self, frame_idx):
         self.agent.model.eval()
-        self.tournament.evaluate_agent('self', self.agent, n_games=10)
-        elos = self.tournament.elo_leaderboard.elo_system
+        prev_board = self.tournament.leaderboard.clone()
+        self.tournament.evaluate_agent('self', n_games=15)
+        elos = self.tournament.leaderboard.elos
         for name, elo in elos.items():
             self.tracker.interval_metrics.add(f'elo/{name}', elo)
+        prev_board['self'] = elos['self'] # only update self elo
+        self.tournament.leaderboard = prev_board
         self.agent.model.train()
 
     def checkpoint(self, frame_idx):

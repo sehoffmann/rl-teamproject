@@ -22,7 +22,7 @@ class Agent(ABC):
 class EloLeaderboard(dict):
     """Ideas based on https://en.wikipedia.org/wiki/Elo_rating_system"""
 
-    def __init__(self, start_elo=900, max_k=400, min_k=10,  default_elos=True):
+    def __init__(self, start_elo=1000, max_k=400, min_k=20,  default_elos=True):
         self.start_elo = start_elo
         self.max_k = max_k
         self.min_k = min_k
@@ -52,8 +52,6 @@ class EloLeaderboard(dict):
     def add_agent(self, agent, elo=None):
         if agent not in self:
             self[agent] = elo if elo is not None else self.start_elo
-        else:
-            raise ValueError(f"Agent {agent} already in leaderboard")
     
     def get_win_probs(self, agent_a: str, agent_b: str):
         delta = self[agent_b] - self[agent_a]
@@ -84,8 +82,17 @@ class EloLeaderboard(dict):
         return self[agent_a], self[agent_b]
 
     def load_default_ratings(self):
-        self.elos['basic_weak'] = 885
-        self.elos['basic_strong'] = 915
+        self.elos['basic_weak'] = 930
+        self.num_games['basic_weak'] = 20
+        
+        self.elos['basic_strong'] = 900
+        self.num_games['basic_strong'] = 20
+
+        self.elos['stenz'] = 875
+        self.num_games['stenz'] = 20
+
+        self.elos['lilith_weak'] = 990
+        self.num_games['lilith'] = 20
 
     def save(self, path):
         with open(path, "w") as fp:
@@ -142,7 +149,7 @@ def play_game(agent1, agent2, max_steps = 250, render=True, action_repeats=1):
     return r, states, result
 
 class HockeyTournamentEvaluation():
-    def __init__(self, add_basics=True, start_elo=900, default_elos=True):
+    def __init__(self, add_basics=True, start_elo=1000, default_elos=True):
         self.leaderboard = EloLeaderboard(start_elo=start_elo, default_elos=default_elos)
         self.agents = {}
         if add_basics:
@@ -202,7 +209,7 @@ class HockeyTournamentEvaluation():
         if save_gif:
             states[0].save(f'tournament_{name1}_{name2}.gif', save_all=True, append_images=states[1:], duration=(1/50)*1000)
 
-    def evaluate_agent(self, name, agent, n_games=1, verbose=False):
+    def evaluate_agent(self, name, n_games=1, verbose=False):
         assert name in self, "register your agent for this tournament to receive elo"
         for _ in range(n_games):
             # note: n games varying pairings
