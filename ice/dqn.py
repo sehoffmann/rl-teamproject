@@ -10,7 +10,6 @@ import numpy as np
 from decay import EpsilonDecay
 from environments import IcyHockey
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
-from rollout_collection import RemoteReplayBuffer
 from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
 import plotting
@@ -66,6 +65,9 @@ class NNAgent:
         if config is None:
             with open(path.parent / 'config.json', 'r') as f:
                 config = json.load(f)
+
+        if config.get('is_stenz', False):
+            return get_stenz(path)
 
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)

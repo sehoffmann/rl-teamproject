@@ -3,10 +3,10 @@ import numpy as np
 import torch
 from laserhockey.hockey_env import HockeyEnv
 
-def get_stenz():
+def get_stenz(path):
     env = HockeyEnv()
     stenz = DQNAgent(env.observation_space, env.action_space, eps=0.0)
-    stenz.load_checkpoint('baselines/stenz.pth')
+    stenz.load_checkpoint(path)
     return stenz
 
 class DQNAgent(object):
