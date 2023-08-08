@@ -254,12 +254,12 @@ class DqnTrainer:
         elif self.schedule == 'basic':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
-            if frame_idx == 1_000_000:
+            if frame_idx == 2_500_000:
                 agent = NNAgent.load_lilith_weak(self.device)
                 self.env.add_opponent('lilith_weak', agent, prob=5)
-            if frame_idx >= 2_000_000 and frame_idx % 200_000 == 0:
+            if frame_idx >= 3_000_000 and frame_idx % 500_000 == 0:
                 agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=5, rolling=5)
+                self.env.add_opponent('self', agent, prob=5, rolling=3)
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)

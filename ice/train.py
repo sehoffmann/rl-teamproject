@@ -75,7 +75,7 @@ def train(config, model_dir, device):
         scheduler=scheduler,
     )
 
-    assert not config['lilith_bootstrap'] or config['warmup_frames'] >= config['bootstrap_frames']
+    assert config['warmup_frames'] >= config['bootstrap_frames']
 
     # Trainer
     trainer = DqnTrainer(
@@ -91,7 +91,7 @@ def train(config, model_dir, device):
     )
 
     # Prepopulate using lilith-weak
-    if config['lilith_bootstrap']:
+    if config['bootstrap_frames'] > 0:
         lilith_weak = NNAgent.load_lilith_weak(device)
         trainer.prepopulate(lilith_weak, config['bootstrap_frames'])
 
@@ -132,8 +132,7 @@ def make_config(args):
         'buffer_size': args.buffer_size,
         'eps_decay': args.eps_decay,
         'beta_decay': args.beta_decay,
-        'lilith_bootstrap': not args.no_lilith_bootstrap,
-        'bootstrap_frames': 300_000,
+        'bootstrap_frames': args.bootstrap_frames,
         'rampup': args.rampup,
     }
     return config
@@ -157,7 +156,6 @@ def main():
     parser.add_argument('--eps-decay', type=int, default=1_000_000)
     parser.add_argument('--beta-decay', type=int, default=2_000_000)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--no-lilith-bootstrap', action='store_true')
 
     # Method
     parser.add_argument('--model', choices=MODELS, type=str, default='lilith')
@@ -168,7 +166,8 @@ def main():
     parser.add_argument('--double-q', action='store_true')
     parser.add_argument('--frame-stacks', type=int, default=1)
     parser.add_argument('--cosine-annealing', action='store_true')
-    parser.add_argument('--rampup', type=int, default=500_000)
+    parser.add_argument('--rampup', type=int, default=0)
+    parser.add_argument('--bootstrap-frames', type=int, default=0)
 
     args = parser.parse_args()
     config = make_config(args)
