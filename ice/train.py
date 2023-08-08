@@ -49,11 +49,19 @@ def train(config, model_dir, device):
 
     # Model & DQN Agent
     model = create_model(config, env.action_space.n, obs_shape).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
+    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr']) #
     if config['cosine_annealing']:
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['frames'], 1e-6)
+        scheduler =torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['frames'], 1e-6)
     else:
         scheduler = None
+
+    if config['rampup'] > 0:
+        lr_rampup = torch.torch.optim.lr_scheduler.LinearLR(optimizer, 1e-1, total_iters=config['rampup'])
+        schedulers = [lr_rampup]
+        if scheduler is not None:
+            schedulers.append(scheduler)
+        scheduler = torch.optim.lr_scheduler.ChainedScheduler(schedulers)
+
     epsilon_decay = EpsilonDecay(num_frames=config['eps_decay'])
     dqn_agent = DqnAgent(
         model, 
@@ -125,6 +133,7 @@ def make_config(args):
         'eps_decay': args.eps_decay,
         'beta_decay': args.beta_decay,
         'lilith_bootstrap': not args.no_lilith_bootstrap,
+        'rampup': args.rampup,
     }
     return config
 
@@ -158,6 +167,7 @@ def main():
     parser.add_argument('--double-q', action='store_true')
     parser.add_argument('--frame-stacks', type=int, default=1)
     parser.add_argument('--cosine-annealing', action='store_true')
+    parser.add_argument('--rampup', type=int, default=500_000)
 
     args = parser.parse_args()
     config = make_config(args)
