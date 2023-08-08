@@ -39,4 +39,4 @@ Train for 5M (~4h)
 3. Add lilith-weak at 1M (p=5)
 4. Start self-training add 2M
     - Add one copy every 200k frames (p=5)
-    - 8 versions total
+    - 5 versions total
