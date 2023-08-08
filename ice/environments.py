@@ -36,9 +36,10 @@ class RollingOpponent(Opponent):
 class IcyHockey(HockeyEnv):
     N_DISCRETE_ACTIONS = 7
 
-    def __init__(self, mode=HockeyEnv.NORMAL):
+    def __init__(self, mode=HockeyEnv.NORMAL, reward_shaping=True):
         # this has to be done before calling super().__init__(), because reset() is called
         self.opponents = {}
+        self.reward_shaping = reward_shaping
         self.cur_opp_name = None
         self.cur_opp_agent = None
         self.add_basic_opponent(weak=True)
@@ -88,6 +89,9 @@ class IcyHockey(HockeyEnv):
         stacked_action = np.hstack([a1, a2])
         obs, reward, done, _, info = super().step(stacked_action)
         self._augment_info(info)
+        if not self.reward_shaping:
+            reward = info['winner'] * 10
+
         return obs, reward, done, _, info
     
     def _augment_info(self, info):
