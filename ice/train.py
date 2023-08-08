@@ -86,7 +86,7 @@ def train(config, model_dir, device):
         device,
         frame_stacks=config['frame_stacks'],
         update_frequency=config['update_frequency'],
-        training_delay=config['warmup_frames'] - config['bootstrap_frames'] if config['lilith_bootstrap'] else config['warmup_frames'],
+        training_delay=config['warmup_frames'] - config['bootstrap_frames'],
         schedule=config['schedule'],
     )
 

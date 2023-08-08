@@ -1,3 +1,5 @@
+#!/bin/bash
+
 python ice/train.py \
     -n "lilith-strong-plain" \
     --model "lilith" \

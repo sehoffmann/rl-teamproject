@@ -1,3 +1,5 @@
+#!/bin/bash
+
 python ice/train.py \
     -n "lilith-strong-bt150k-rampup" \
     --model "lilith" \
