@@ -87,9 +87,9 @@ def create_model(config, num_actions, obs_shape):
         return model
 
 def train(config, model_dir, device):
-    # ENV
-    env = IcyHockey()
-    
+    ## ENV
+    env = IcyHockey(reward_shaping=config['reward_shaping'])
+
     # Replay Buffer
     obs_shape = [config['frame_stacks'], env.observation_space.shape[0]]
     if not config['priority_rp']:
@@ -197,8 +197,23 @@ def make_config(args):
         'softactions': args.softactions,
         'crps': args.crps,
         'crps_explore': args.crps,
+        'reward_shaping': True,
     }
     return config
+
+def run(config):
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    model_dir = create_model_dir(config)
+    print('Config:')
+    pprint(config, indent=4)
+    with open(model_dir / 'config.json', 'w') as f:
+        json.dump(config, f, indent=4)
+    train(config, model_dir, device)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -223,6 +238,7 @@ def main():
     # Method
     parser.add_argument('--model', choices=MODELS, type=str, default='lilith')
     parser.add_argument('--schedule', choices=TRAINING_SCHEDULES, type=str)
+    parser.add_argument('--advanced-schedule', action='store_true')
     parser.add_argument('--per', action='store_true')
     parser.add_argument('--no-dueling', action='store_true')
     parser.add_argument('--nsteps', type=int, default=3)
@@ -236,21 +252,33 @@ def main():
     parser.add_argument('--crps-explore', action='store_true')
 
     args = parser.parse_args()
-    config = make_config(args)
 
+    ## create config for phase 1 and phase 2
+    config = make_config(args)
     init_wandb(config, args)
 
-    model_dir = create_model_dir(config)
-    print('Config:')
-    pprint(config, indent=4)
-    with open(model_dir / 'config.json', 'w') as f:
-        json.dump(config, f, indent=4)
+    if args.advanced_schedule:
+        phase1_config = config.copy()
+        phase1_config['eps_decay'] = 1_000_000
+        phase1_config['frames'] = 3_000_000
+        phase1_config['name'] += '-phase1'
+        phase1_config['schedule'] = 'advanced-phase1'
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-    train(config, model_dir, device)
+        run(phase1_config)
+
+        phase2_config = config.copy()
+        phase2_config['eps_decay'] = 1
+        phase2_config['frames'] = 15_000_000
+        phase2_config['name'] += '-phase2'
+        phase2_config['schedule'] = 'basic'
+        phase2_config['rampup'] = 1_000_000
+        phase2_config['warmup_frames'] = 1
+        phase2_config['reward_shaping'] = False
+
+        run(phase2_config)
+        
+
+    run(config)
 
 
 
