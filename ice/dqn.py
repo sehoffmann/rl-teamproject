@@ -158,7 +158,6 @@ class DqnTrainer:
     def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, schedule=None):
         assert schedule is None or schedule in ['lilith', 'basic', 'adv1', 'adv2']
         
->>>>>>> 4baeb057f825fb38a0ea418cb91e037e7d726661
         self.model_dir = model_dir
         self.env = env
         self.agent = agent
@@ -210,7 +209,6 @@ class DqnTrainer:
         print('Warming up...')
         state = self.reset_env()
         for idx in range(self.training_delay):
->>>>>>> 4baeb057f825fb38a0ea418cb91e037e7d726661
             action = self.agent.select_action(state, 1)
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
