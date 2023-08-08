@@ -9,11 +9,11 @@ from pathlib import Path
 
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from environments import IcyHockey
-from models import Lilith
+from models import Lilith, Baseline1
 from decay import EpsilonDecay
 from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 
-MODELS = ['lilith']
+MODELS = ['lilith', 'lilith_big', "baseline1", "baseline1_layernorm", "baseline1_ln_big"]
 
 def create_model(config, num_actions, obs_shape):
     cp_path = config['checkpoint']
@@ -28,6 +28,43 @@ def create_model(config, num_actions, obs_shape):
             dueling=config['dueling'],
         )
         return model
+    elif config['model'] == 'lilith_big':
+        model = Lilith(
+            obs_shape[1]*obs_shape[0], 
+            num_actions, 
+            hidden_size=512, 
+            dueling=config['dueling'],
+        )
+        return model
+    elif config['model'] == 'baseline1':
+        model = Baseline1(
+            obs_shape[1]*obs_shape[0], 
+            num_actions, 
+            hidden_size=512, 
+            n_hidden_layers=3,
+            layer_norm=False
+        )
+        return model
+    elif config['model'] == 'baseline1_layernorm':
+        model = Baseline1(
+            obs_shape[1]*obs_shape[0], 
+            num_actions, 
+            hidden_size=512, 
+            n_hidden_layers=3,
+            layer_norm=True
+        )
+        return model
+    elif config['model'] == 'baseline1_ln_big':
+        model = Baseline1(
+            obs_shape[1]*obs_shape[0], 
+            num_actions, 
+            hidden_size=512, 
+            n_hidden_layers=5,
+            n_hidden_heads=2,
+            layer_norm=True
+        )
+        return model
+
 
 def train(config, model_dir, device):
     # ENV
