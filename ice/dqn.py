@@ -2,6 +2,7 @@ import copy
 import itertools
 from pathlib import Path
 import json
+import math
 
 import torch
 import torch.nn.functional as F
@@ -12,6 +13,7 @@ from environments import IcyHockey
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
 from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
+from crps import normal_kullback_div
 import plotting
 
 from dqn_stenz import get_stenz
@@ -21,11 +23,12 @@ TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2']
 class NNAgent:
     ENV = IcyHockey()
 
-    def __init__(self, model, device, frame_stacks=1, softactions=True):
+    def __init__(self, model, device, frame_stacks=1, softactions=False, crps=False):
         self.model = model
         self.device = device
         self.stacker = FrameStacker(frame_stacks)
         self.softactions = softactions
+        self.crps = crps
 
     def reset(self):
         self.stacker.clear()
@@ -37,10 +40,19 @@ class NNAgent:
 
     def select_action(self, state, frame_idx=None):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        if not self.softactions:
-            return self.model(state).argmax(dim=1).item()
+        if self.crps:
+            combined = self.model(state)
+            mean, std_log = combined.chunk(2, dim=1)
+            std = torch.exp(std_log)
+            lcb = mean - 1*std # lower confidence bound
+            Qs = lcb
         else:
-            probs = F.softmax(self.model(state), dim=1).squeeze(0)
+            Qs = self.model(state)
+
+        if not self.softactions:
+            return Qs.argmax(dim=1).item()
+        else:
+            probs = F.softmax(Qs, dim=1).squeeze(0)
             return np.random.choice(len(probs), p=probs.cpu().detach().numpy())
 
     def clone(self):
@@ -90,8 +102,8 @@ class NNAgent:
 
 class DqnAgent(NNAgent):
 
-    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None, softactions=True):
-        super().__init__(model, device, frame_stacks, softactions=softactions)
+    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None, softactions=False, crps=False, crps_explore=False):
+        super().__init__(model, device, frame_stacks, softactions=softactions, crps=crps)
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
@@ -101,6 +113,7 @@ class DqnAgent(NNAgent):
         self.num_updates = 0
         self.no_double = no_double
         self.scheduler = scheduler
+        self.crps_explore = crps_explore
 
         self.target_model.requires_grad_(False)
         self.target_model.eval()
@@ -110,6 +123,15 @@ class DqnAgent(NNAgent):
             epsilon = self.epsilon_decay(frame_idx)
         else:
             epsilon = 0.0
+
+        """
+        if self.crps and self.crps_explore:
+            combined = self.model(state).squeeze(0)
+            mean, std_log = combined.chunk(2)
+            std = torch.exp(std_log)
+            lcb = mean - 1*std # lower confidence bound
+            Qs = lcb
+        """
 
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
@@ -146,22 +168,47 @@ class DqnAgent(NNAgent):
         done = samples['done']
 
         action = action.unsqueeze(1)  # B x 1
-        curr_q_value = self.model(state).gather(1, action) # B x 1
-        curr_q_value = curr_q_value.squeeze(1) # B
 
-        next_q_value = self.target_model(next_state)
+        if not self.crps:
+            next_q_value = self.target_model(next_state)
+            if self.no_double:
+                best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+            else:
+                best_action = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
+            
+            next_value_f = next_q_value.gather(1, best_action) # B x 1
+            next_value_f = next_value_f.squeeze(1).detach() # B
+            
+            mask = 1 - done # B
+            target = (reward + self.gamma * next_value_f * mask)
 
-        if self.no_double:
-            best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+            cur_q_value = self.model(state).gather(1, action) # B x 1
+            cur_q_value = cur_q_value.squeeze(1) # B
+            loss = F.smooth_l1_loss(cur_q_value, target, reduction="none")
         else:
-            best_action = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
+            next_q_value, next_std_log = self.target_model(next_state).chunk(2, dim=1) # B x D
+            if self.no_double:
+                best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+            else:
+                next_q_prime = self.model(next_state).chunk(2, dim=1)[0] # B x D
+                best_action = next_q_prime.argmax(dim=1, keepdim=True) # B x 1
+            
+            next_val_dist_mean = next_q_value.gather(1, best_action).squeeze(1) 
+            next_val_dist_std_log = next_std_log.gather(1, best_action).squeeze(1)
+            
+            gamma_next_val_dist_mean = self.gamma * next_val_dist_mean + reward # B
+            gamma_next_val_dist_std_log = next_val_dist_std_log + math.log(self.gamma) # B
+
+            # done flag:
+            done = done.bool()
+            gamma_next_val_dist_mean[done] = reward[done]
+            gamma_next_val_dist_std_log[done] = -2.0 # std=0.01
+
+            cur_q_value, cur_std_log = self.model(state).chunk(2, dim=1) # B x D
+            cur_q_value = cur_q_value.gather(1, action).squeeze(1) # B
+            cur_std_log = cur_std_log.gather(1, action).squeeze(1) # B
+            loss = (1/100) * normal_kullback_div(cur_q_value, cur_std_log, gamma_next_val_dist_mean.detach(), gamma_next_val_dist_std_log.detach())
         
-        next_value_f = next_q_value.gather(1, best_action) # B x 1
-        next_value_f = next_value_f.squeeze(1).detach() # B
-        
-        mask = 1 - done # B
-        target = (reward + self.gamma * next_value_f * mask)
-        loss = F.smooth_l1_loss(curr_q_value, target, reduction="none")
         return loss
 
 

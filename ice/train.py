@@ -16,6 +16,9 @@ from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 MODELS = ['lilith', 'lilith_big', 'baseline1', 'baseline1_layernorm', 'baseline1_ln_big', 'LSTM-small', 'LSTM-big']
 
 def create_model(config, num_actions, obs_shape):
+    if config['crps']:
+        num_actions *= 2 # predict both mean and std
+
     cp_path = config['checkpoint']
     if cp_path:
         print(f'Loading model from {cp_path}')
@@ -128,6 +131,8 @@ def train(config, model_dir, device):
         no_double=not config['double_q'],
         scheduler=scheduler,
         softactions=config['softactions'],
+        crps=config['crps'],
+        crps_explore=config['crps_explore'],
     )
 
     assert config['warmup_frames'] >= config['bootstrap_frames']
@@ -190,6 +195,8 @@ def make_config(args):
         'bootstrap_frames': args.bootstrap_frames,
         'rampup': args.rampup,
         'softactions': args.softactions,
+        'crps': args.crps,
+        'crps_explore': args.crps,
     }
     return config
 
@@ -225,6 +232,8 @@ def main():
     parser.add_argument('--rampup', type=int, default=0)
     parser.add_argument('--bootstrap-frames', type=int, default=0)
     parser.add_argument('--softactions', action='store_true')
+    parser.add_argument('--crps', action='store_true')
+    parser.add_argument('--crps-explore', action='store_true')
 
     args = parser.parse_args()
     config = make_config(args)
