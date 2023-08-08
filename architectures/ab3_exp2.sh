@@ -8,5 +8,5 @@ python ice/train.py \
     --nsteps 4 \
     --eps-decay 2_000_000 \
     --cosine-annealing \
-    --no-dueling
+    --no-dueling \
     --per
