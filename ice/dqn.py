@@ -124,14 +124,12 @@ class DqnAgent(NNAgent):
         else:
             epsilon = 0.0
 
-        """
         if self.crps and self.crps_explore:
             combined = self.model(state).squeeze(0)
             mean, std_log = combined.chunk(2)
             std = torch.exp(std_log)
-            lcb = mean - 1*std # lower confidence bound
-            Qs = lcb
-        """
+            Qs = mean + (2*epsilon - 1)*std # interpolate between LCB and UCB
+            return Qs.argmax(dim=1).item()
 
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
