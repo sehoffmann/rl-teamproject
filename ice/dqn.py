@@ -207,7 +207,7 @@ class DqnAgent(NNAgent):
             cur_q_value, cur_std_log = self.model(state).chunk(2, dim=1) # B x D
             cur_q_value = cur_q_value.gather(1, action).squeeze(1) # B
             cur_std_log = cur_std_log.gather(1, action).squeeze(1) # B
-            loss = (1/100) * normal_kullback_div(cur_q_value, cur_std_log, gamma_next_val_dist_mean.detach(), gamma_next_val_dist_std_log.detach())
+            loss = (1/400) * normal_kullback_div(cur_q_value, cur_std_log, gamma_next_val_dist_mean.detach(), gamma_next_val_dist_std_log.detach())
         
         return loss
 
