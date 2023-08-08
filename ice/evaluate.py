@@ -21,7 +21,7 @@ def main():
         tournament.add_agent(cp, NNAgent.load_model(cp, device=device))
     
     if not args.no_stenz:
-        tournament.add_agent('stenz', get_stenz(), num_games=10)
+        tournament.add_agent('stenz', get_stenz())
 
     print(f'Playing {args.games} games...')
     try:

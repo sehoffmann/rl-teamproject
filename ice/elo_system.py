@@ -180,16 +180,16 @@ class HockeyTournamentEvaluation():
         self.agents[name] = agent
         self.leaderboard.add_agent(name, elo=elo)
         if num_games > 0:
-            self.evaluate_agent(name, agent, n_games=num_games)
+            self.evaluate_agent(name, n_games=num_games)
     
     def get_pairing(self, name):
         alpha = 0.7 # softness factor
         eps = 20
         elo = self.leaderboard[name]
-        sample_weights = [1/(eps + (np.abs(elo - opp_elo))**alpha) for opp_elo in self.leaderboard.elos.values()]        
+        sample_weights = [1/(eps + (np.abs(elo - self.leaderboard[name]))**alpha) for name in self.agents]        
         sample_weights = np.array(sample_weights) / sum(sample_weights)
         # print(sample_weights)
-        opponents = np.random.choice(list(self.leaderboard.elos.keys()), size=1, p=sample_weights)
+        opponents = np.random.choice(list(self.agents), size=1, p=sample_weights)
         return (name, opponents[0])
     
     def random_plays(self, n_plays=10, verbose=False):
