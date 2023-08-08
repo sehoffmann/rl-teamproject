@@ -19,7 +19,10 @@ def main():
         tournament.add_agent(cp, NNAgent.load_model(cp, device=device))
     
     print(f'Playing {args.games} games...')
-    tournament.random_plays(n_plays=args.games, verbose=not args.quiet)
+    try:
+        tournament.random_plays(n_plays=args.games, verbose=not args.quiet)
+    except KeyboardInterrupt:
+        pass
     print(tournament)
 
 if __name__ == '__main__':

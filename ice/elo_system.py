@@ -22,10 +22,12 @@ class Agent(ABC):
 class EloLeaderboard(dict):
     """Ideas based on https://en.wikipedia.org/wiki/Elo_rating_system"""
 
-    def __init__(self, start_elo=900, K=32, default_elos=True):
+    def __init__(self, start_elo=900, max_k=400, min_k=10,  default_elos=True):
         self.start_elo = start_elo
-        self.K = K
+        self.max_k = max_k
+        self.min_k = min_k
         self.elos = {}
+        self.num_games = {}
         if default_elos:
             self.load_default_ratings()
 
@@ -61,8 +63,10 @@ class EloLeaderboard(dict):
     def calculate_new_elos(self, agent_a: str, agent_b: str, result):
         result_a, result_b = result
         expect_a, expect_b = self.get_win_probs(agent_a, agent_b)
-        new_a = self[agent_a] + self.K * (result_a - expect_a)
-        new_b = self[agent_b] + self.K * (result_b - expect_b)
+        K_a = max(self.min_k, self.max_k / (self.num_games.get(agent_a, 0) + 1))
+        K_b = max(self.min_k, self.max_k / (self.num_games.get(agent_b, 0) + 1))
+        new_a = self[agent_a] + K_a * (result_a - expect_a)
+        new_b = self[agent_b] + K_b * (result_b - expect_b)
         return new_a, new_b
 
     def update_rating(self, agent_a, agent_b, result):
@@ -75,6 +79,8 @@ class EloLeaderboard(dict):
         a draw: (0.5, 0.5)
         """
         self[agent_a], self[agent_b] = self.calculate_new_elos(agent_a, agent_b, result)
+        self.num_games[agent_a] = self.num_games.get(agent_a, 0) + 1
+        self.num_games[agent_b] = self.num_games.get(agent_b, 0) + 1
         return self[agent_a], self[agent_b]
 
     def load_default_ratings(self):
@@ -90,8 +96,9 @@ class EloLeaderboard(dict):
             self.elos = json.load(fp)
 
     def clone(self):
-        new_leaderboard = EloLeaderboard(start_elo=self.start_elo, K=self.K, default_elos=False)
+        new_leaderboard = EloLeaderboard(start_elo=self.start_elo, max_k=self.max_k, min_k=self.min_k, default_elos=False)
         new_leaderboard.elos = self.elos.copy()
+        new_leaderboard.num_games = self.num_games.copy()
         return new_leaderboard
 
     def __str__(self):
@@ -135,8 +142,8 @@ def play_game(agent1, agent2, max_steps = 250, render=True, action_repeats=1):
     return r, states, result
 
 class HockeyTournamentEvaluation():
-    def __init__(self, add_basics=True, start_elo=900, K=32, default_elos=True):
-        self.leaderboard = EloLeaderboard(start_elo=start_elo, K=K, default_elos=default_elos)
+    def __init__(self, add_basics=True, start_elo=900, default_elos=True):
+        self.leaderboard = EloLeaderboard(start_elo=start_elo, default_elos=default_elos)
         self.agents = {}
         if add_basics:
             self.agents['basic_weak'] = lh.BasicOpponent()
