@@ -67,7 +67,7 @@ class NNAgent:
                 config = json.load(f)
 
         if config.get('is_stenz', False):
-            return get_stenz(path)
+            return get_stenz(path, device)
 
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
@@ -76,6 +76,16 @@ class NNAgent:
     @classmethod
     def load_lilith_weak(cls, device):
         path = Path('baselines') / 'lilith_weak.pt'
+        return cls.load_model(path, device)
+    
+    @classmethod
+    def load_stenz_weak(cls, device):
+        path = Path('baselines') / 'stenz.pth'
+        return cls.load_model(path, device)
+
+    @classmethod
+    def load_stenz_strong(cls, device):
+        path = Path('baselines') / 'stenz_29700.pth'
         return cls.load_model(path, device)
 
 class DqnAgent(NNAgent):
@@ -176,7 +186,7 @@ class DqnTrainer:
         self.tournament = HockeyTournamentEvaluation()
         self.tournament.add_agent('self', self.agent)
         self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
-        self.tournament.add_agent('stenz', get_stenz())
+        self.tournament.add_agent('stenz', NNAgent.load_stenz_weak(self.device))
 
     def reset_env(self):
         self.stacker.clear()
@@ -271,10 +281,7 @@ class DqnTrainer:
                 self.env.add_basic_opponent(weak=False)
 
     def _update(self, frame_idx):
-        if np.random.random() < 0.5 and self.populate_replaty_online:
-            batch = self.remote_replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
-        else:
-            batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
+        batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
         loss, sample_losses = self.agent.update_model(batch, frame_idx)
         self.tracker.add_update(loss)
         if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
