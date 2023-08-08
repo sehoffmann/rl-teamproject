@@ -1,0 +1,21 @@
+{
+    "frames": 3000000,
+    "name": "lilith-weak",
+    "checkpoint": null,
+    "model": "lilith",
+    "schedule": "lilith",
+    "priority_rp": false,
+    "double_q": false,
+    "nsteps": 1,
+    "dueling": true,
+    "frame_stacks": 1,
+    "gamma": 0.99,
+    "lr": 0.0001,
+    "batch_size": 512,
+    "cosine_annealing": false,
+    "update_frequency": 2,
+    "warmup_frames": 500000,
+    "buffer_size": 500000,
+    "eps_decay": 1000000,
+    "beta_decay": 2000000
+}

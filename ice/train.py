@@ -11,10 +11,9 @@ from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from environments import IcyHockey
 from models import Lilith
 from decay import EpsilonDecay
-from dqn import DqnAgent, DqnTrainer
+from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 
 MODELS = ['lilith']
-PRESETS = ['lilith']
 
 def create_model(config, num_actions, obs_shape):
     cp_path = config['checkpoint']
@@ -50,11 +49,19 @@ def train(config, model_dir, device):
 
     # Model & DQN Agent
     model = create_model(config, env.action_space.n, obs_shape).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
+    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr']) #
     if config['cosine_annealing']:
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['frames'])
+        scheduler =torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['frames'], 1e-6)
     else:
         scheduler = None
+
+    if config['rampup'] > 0:
+        lr_rampup = torch.torch.optim.lr_scheduler.LinearLR(optimizer, 1e-1, total_iters=config['rampup'])
+        schedulers = [lr_rampup]
+        if scheduler is not None:
+            schedulers.append(scheduler)
+        scheduler = torch.optim.lr_scheduler.ChainedScheduler(schedulers)
+
     epsilon_decay = EpsilonDecay(num_frames=config['eps_decay'])
     dqn_agent = DqnAgent(
         model, 
@@ -68,6 +75,8 @@ def train(config, model_dir, device):
         scheduler=scheduler,
     )
 
+    assert config['warmup_frames'] >= config['bootstrap_frames']
+
     # Trainer
     trainer = DqnTrainer(
         model_dir,
@@ -77,9 +86,14 @@ def train(config, model_dir, device):
         device,
         frame_stacks=config['frame_stacks'],
         update_frequency=config['update_frequency'],
-        training_delay=config['warmup_frames'],
-        populate_replay_online=True,
+        training_delay=config['warmup_frames'] - config['bootstrap_frames'],
+        schedule=config['schedule'],
     )
+
+    # Prepopulate using lilith-weak
+    if config['bootstrap_frames'] > 0:
+        lilith_weak = NNAgent.load_lilith_weak(device)
+        trainer.prepopulate(lilith_weak, config['bootstrap_frames'])
 
     trainer.train(config['frames'])
 
@@ -103,20 +117,24 @@ def make_config(args):
         'name': args.name,
         'checkpoint': args.checkpoint,
         'model': args.model,
+        "schedule": args.schedule,
         'priority_rp': args.per,
         'double_q': args.double_q,
         'nsteps': args.nsteps,
         'dueling': not args.no_dueling,
         'frame_stacks': args.frame_stacks,
-        'gamma': 0.99,
-        'lr': 1e-4,
-        'batch_size': 256,
+        'gamma': args.gamma,
+        'lr': args.lr,
+        'batch_size': args.batch_size,
         'cosine_annealing': args.cosine_annealing,
-        'update_frequency': 2,
-        'warmup_frames': 300,#200_000,
-        'buffer_size': 500_000,
-        'eps_decay': 1_000_000,
-        'beta_decay': 2_000_000,
+        'update_frequency': args.update_frequency,
+        'warmup_frames': args.warmup_frames,
+        'buffer_size': args.buffer_size,
+        'eps_decay': args.eps_decay,
+        'beta_decay': args.beta_decay,
+        'bootstrap_frames': args.bootstrap_frames,
+        'rampup': args.rampup,
+        'softactions': args.softactions,
     }
     return config
 
@@ -130,14 +148,28 @@ def main():
     parser.add_argument('--no-wandb', action='store_true')
     parser.add_argument('--preset', type=str, default=0)
 
+    # Other
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--batch-size', type=int, default=512)
+    parser.add_argument('--warmup-frames', type=int, default=500_000)
+    parser.add_argument('--buffer-size', type=int, default=500_000)
+    parser.add_argument('--update-frequency', type=int, default=2)
+    parser.add_argument('--eps-decay', type=int, default=1_000_000)
+    parser.add_argument('--beta-decay', type=int, default=2_000_000)
+    parser.add_argument('--gamma', type=float, default=0.99)
+
     # Method
     parser.add_argument('--model', choices=MODELS, type=str, default='lilith')
+    parser.add_argument('--schedule', choices=TRAINING_SCHEDULES, type=str)
     parser.add_argument('--per', action='store_true')
     parser.add_argument('--no-dueling', action='store_true')
     parser.add_argument('--nsteps', type=int, default=3)
     parser.add_argument('--double-q', action='store_true')
     parser.add_argument('--frame-stacks', type=int, default=1)
     parser.add_argument('--cosine-annealing', action='store_true')
+    parser.add_argument('--rampup', type=int, default=0)
+    parser.add_argument('--bootstrap-frames', type=int, default=0)
+    parser.add_argument('--softactions', action='store_true')
 
     args = parser.parse_args()
     config = make_config(args)

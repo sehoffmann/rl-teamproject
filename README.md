@@ -29,12 +29,14 @@ The version created by the procedure below will be called *lilith-weak*.
     - We keep 5 versions around 
 
 
-# Basic Training Schedule
+# Basic Training Schedule (Ablation)
 
-Train for 20M 
-1. Bootstrap Replay Buffer with Lilith
+Train for 5M (~4h)
+* Eps-Decay: 2M
+* Cosine Annealing
+1. Bootstrap Replay Buffer with Lilith (150k)
 2. Train for 500k against weak, then add strong
 3. Add lilith-weak at 1M (p=5)
 4. Start self-training add 2M
-    - Add one copy every 500k frames (p=7)
+    - Add one copy every 200k frames (p=5)
     - 5 versions total

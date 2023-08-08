@@ -1,5 +1,8 @@
 import copy
 import itertools
+from pathlib import Path
+import json
+
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -14,34 +17,69 @@ import plotting
 
 from dqn_stenz import get_stenz
 
+TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2']
 
 class NNAgent:
     ENV = IcyHockey()
 
-    def __init__(self, model, device, frame_stacks=1):
+    def __init__(self, model, device, frame_stacks=1, softactions=True):
         self.model = model
         self.device = device
         self.stacker = FrameStacker(frame_stacks)
+        self.softactions = softactions
 
     def reset(self):
         self.stacker.clear()
 
     def act(self, state):
         state = self.stacker.append_and_stack(state)
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        action_discrete = self.model(state).argmax(dim=1).item()
+        action_discrete = self.select_action(state)
         return self.ENV.discrete_to_continous_action(action_discrete)
+
+    def select_action(self, state, frame_idx=None):
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        if not self.softactions:
+            return self.model(state).argmax(dim=1).item()
+        else:
+            probs = F.softmax(self.model(state), dim=1).squeeze(0)
+            return np.random.choice(len(probs), p=probs.cpu().detach().numpy())
+
+    def clone(self):
+        model = copy.deepcopy(self.model)
+        model.eval().requires_grad_(False)
+        return NNAgent(model, self.device, self.stacker.num_frames, softactions=self.softactions)
 
     def save_model(self, path):
         self.model.to('cpu')
         torch.save(self.model, path)
         self.model.to(self.device)
 
+    @classmethod
+    def load_model(cls, path, device):
+        path = Path(path)
+        try:
+            with open(path.parent / f'{path.stem}.json', 'r') as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            config = None
+
+        if config is None:
+            with open(path.parent / 'config.json', 'r') as f:
+                config = json.load(f)
+
+        model = torch.load(path, map_location=device)
+        model.eval().requires_grad_(False)
+        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False))
+    
+    @classmethod
+    def load_lilith_weak(cls, device):
+        path = Path('baselines') / 'lilith_weak.pt'
+        return cls.load_model(path, device)
 
 class DqnAgent(NNAgent):
 
-    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None):
-        super().__init__(model, device, frame_stacks)
+    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None, softactions=True):
+        super().__init__(model, device, frame_stacks, softactions=softactions)
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
@@ -64,8 +102,7 @@ class DqnAgent(NNAgent):
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
         else:
-            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            action = self.model(state).argmax(dim=1).item()
+            action = super().select_action(state, frame_idx)
 
         return action
 
@@ -118,10 +155,7 @@ class DqnAgent(NNAgent):
 
 class DqnTrainer:
 
-<<<<<<< HEAD
-    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader", populate_replay_online=False):
-=======
-    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, agent_name="buster_blader", schedule=None):
+    def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, schedule=None):
         assert schedule is None or schedule in ['lilith', 'basic', 'adv1', 'adv2']
         
 >>>>>>> 4baeb057f825fb38a0ea418cb91e037e7d726661
@@ -138,12 +172,10 @@ class DqnTrainer:
         self.stacker = FrameStacker(frame_stacks)        
         self.tracker = Tracker()
 
-        self.tournament = HockeyTournamentEvaluation(restart=True)
-        self.tournament.register_agent(agent_name, self.agent)
-        self.agent_name = agent_name
-        #self.tournament.register_agent("stenz", get_stenz(), n_welcome_games=10)
-        self.populate_replaty_online = populate_replay_online
-        self.remote_replay_buffer = RemoteReplayBuffer(obs_dim=[self.env.observation_space.shape[0] * frame_stacks], size=100_000, batch_size=32, n_step=1, gamma=0.99)
+        self.tournament = HockeyTournamentEvaluation()
+        self.tournament.add_agent('self', self.agent)
+        self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
+        self.tournament.add_agent('stenz', get_stenz())
 
     def reset_env(self):
         self.stacker.clear()
@@ -155,13 +187,27 @@ class DqnTrainer:
         next_state = self.stacker.append_and_stack(next_state)
         return next_state, reward, done, info
 
+    def prepopulate(self, agent, num_frames: int):
+        print('Prepopulating replay buffer...')
+        self.stacker.clear()
+        state, _ = self.env.reset()
+        self.env.add_opponent('TEMP-AGENT', agent.clone(), prob=4)
+        state_self = self.stacker.append_and_stack(state)
+        for frame_idx in range(1, num_frames + 1):
+            action = agent.select_action(state)
+            next_state, reward, done, _, info = self.env.step(action)
+            next_state_self = self.stacker.append_and_stack(next_state)
+            self.replay_buffer.store(state_self, action, reward, next_state_self, done)
+            state = next_state
+            if done:
+                self.stacker.clear()
+                state, _ = self.env.reset()
+                state_self = self.stacker.append_and_stack(state)
+        self.env.remove_opponent('TEMP-AGENT')
+
     def train(self, num_frames: int):
         # Warmup
-        print('Filling replay buffer...')
-<<<<<<< HEAD
-        state = self.reset_env()   
-        for _ in range(self.training_delay):
-=======
+        print('Warming up...')
         state = self.reset_env()
         for idx in range(self.training_delay):
 >>>>>>> 4baeb057f825fb38a0ea418cb91e037e7d726661
@@ -212,6 +258,15 @@ class DqnTrainer:
             if frame_idx >= 1_500_000 and frame_idx % 100_000 == 0:
                 agent = self._copy_agent()
                 self.env.add_opponent('self', agent, prob=5, rolling=5)
+        elif self.schedule == 'basic':
+            if frame_idx == 500_000:
+                self.env.add_basic_opponent(weak=False)
+            if frame_idx == 2_500_000:
+                agent = NNAgent.load_lilith_weak(self.device)
+                self.env.add_opponent('lilith_weak', agent, prob=5)
+            if frame_idx >= 3_000_000 and frame_idx % 500_000 == 0:
+                agent = self._copy_agent()
+                self.env.add_opponent('self', agent, prob=5, rolling=3)
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
@@ -245,8 +300,13 @@ class DqnTrainer:
     
     def update_elo(self, frame_idx):
         self.agent.model.eval()
-        self.tournament.evaluate_agent(self.agent_name, self.agent, n_games=10)
-        self.tracker.add_checkpoint(self.tournament.elo_leaderboard.elo_system)
+        prev_board = self.tournament.leaderboard.clone()
+        self.tournament.evaluate_agent('self', n_games=15)
+        elos = self.tournament.leaderboard.elos
+        for name, elo in elos.items():
+            self.tracker.interval_metrics.add(f'elo/{name}', elo)
+        prev_board['self'] = elos['self'] # only update self elo
+        self.tournament.leaderboard = prev_board
         self.agent.model.train()
 
     def checkpoint(self, frame_idx):
