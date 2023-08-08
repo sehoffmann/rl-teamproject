@@ -7,5 +7,4 @@ python ice/train.py \
     -f 5000000 \
     --nsteps 3 \
     --eps-decay 2_000_000 \
-    --cosine-annealing \
-    --softactions
+    --cosine-annealing

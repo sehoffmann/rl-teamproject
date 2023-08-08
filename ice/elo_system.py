@@ -186,8 +186,12 @@ class HockeyTournamentEvaluation():
         alpha = 0.7 # softness factor
         eps = 20
         elo = self.leaderboard[name]
+        
         sample_weights = [1/(eps + (np.abs(elo - self.leaderboard[name]))**alpha) for name in self.agents]        
+        own_idx = np.argmax(np.array(self.agents) == name)
+        sample_weights[own_idx] = 0.0
         sample_weights = np.array(sample_weights) / sum(sample_weights)
+        
         # print(sample_weights)
         opponents = np.random.choice(list(self.agents), size=1, p=sample_weights)
         return (name, opponents[0])

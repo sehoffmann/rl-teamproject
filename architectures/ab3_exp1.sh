@@ -1,10 +1,11 @@
 #!/bin/bash
 
 python ice/train.py \
-    -n "ab2-nsteps5" \
+    -n "ab3-nothing" \
     --model "lilith" \
     --schedule "basic" \
     -f 5000000 \
-    --nsteps 5 \
+    --nsteps 4 \
     --eps-decay 2_000_000 \
-    --cosine-annealing
+    --cosine-annealing \
+    --no-dueling

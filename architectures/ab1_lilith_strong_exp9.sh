@@ -1,10 +1,11 @@
 #!/bin/bash
 
 python ice/train.py \
-    -n "ab2-nsteps5" \
+    -n "ab1-lilith-strong-bt150k-nosoft" \
     --model "lilith" \
     --schedule "basic" \
     -f 5000000 \
-    --nsteps 5 \
+    --nsteps 1 \
     --eps-decay 2_000_000 \
-    --cosine-annealing
+    --cosine-annealing \
+    --bootstrap-frames 150000 
