@@ -21,10 +21,11 @@ TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2']
 class NNAgent:
     ENV = IcyHockey()
 
-    def __init__(self, model, device, frame_stacks=1):
+    def __init__(self, model, device, frame_stacks=1, softactions=True):
         self.model = model
         self.device = device
         self.stacker = FrameStacker(frame_stacks)
+        self.softactions = softactions
 
     def reset(self):
         self.stacker.clear()
@@ -36,7 +37,11 @@ class NNAgent:
 
     def select_action(self, state, frame_idx=None):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        return self.model(state).argmax(dim=1).item()
+        if not self.softactions:
+            return self.model(state).argmax(dim=1).item()
+        else:
+            probs = F.softmax(self.model(state), dim=1).squeeze(0)
+            return np.random.choice(len(probs), p=probs.cpu().detach().numpy())
 
     def clone(self):
         model = copy.deepcopy(self.model)
@@ -72,8 +77,8 @@ class NNAgent:
 
 class DqnAgent(NNAgent):
 
-    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None):
-        super().__init__(model, device, frame_stacks)
+    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None, softactions=True):
+        super().__init__(model, device, frame_stacks, softactions=softactions)
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
@@ -96,8 +101,7 @@ class DqnAgent(NNAgent):
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
         else:
-            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            action = self.model(state).argmax(dim=1).item()
+            action = super().select_action(state, frame_idx)
 
         return action
 

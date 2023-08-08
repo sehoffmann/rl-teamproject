@@ -134,6 +134,7 @@ def make_config(args):
         'beta_decay': args.beta_decay,
         'bootstrap_frames': args.bootstrap_frames,
         'rampup': args.rampup,
+        'softactions': args.softactions,
     }
     return config
 
@@ -168,6 +169,7 @@ def main():
     parser.add_argument('--cosine-annealing', action='store_true')
     parser.add_argument('--rampup', type=int, default=0)
     parser.add_argument('--bootstrap-frames', type=int, default=0)
+    parser.add_argument('--softactions', action='store_true')
 
     args = parser.parse_args()
     config = make_config(args)
