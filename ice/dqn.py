@@ -66,6 +66,9 @@ class NNAgent:
             with open(path.parent / 'config.json', 'r') as f:
                 config = json.load(f)
 
+        if config.get('is_stenz', False):
+            return get_stenz(path)
+
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
         return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False))
@@ -268,7 +271,10 @@ class DqnTrainer:
                 self.env.add_basic_opponent(weak=False)
 
     def _update(self, frame_idx):
-        batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
+        if np.random.random() < 0.5 and self.populate_replaty_online:
+            batch = self.remote_replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
+        else:
+            batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
         loss, sample_losses = self.agent.update_model(batch, frame_idx)
         self.tracker.add_update(loss)
         if isinstance(self.replay_buffer, PrioritizedReplayBuffer):

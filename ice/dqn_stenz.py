@@ -3,18 +3,17 @@ import numpy as np
 import torch
 from laserhockey.hockey_env import HockeyEnv
 
-def get_stenz():
+def get_stenz(path):
     env = HockeyEnv()
     stenz = DQNAgent(env.observation_space, env.action_space, eps=0.0)
-    stenz.load_checkpoint('baselines/stenz.pth')
+    stenz.load_checkpoint(path)
     return stenz
 
 class DQNAgent(object):
     """
     Represents a DQNAgent that uses a Deep Q-Network to approximate the Q-values.
     """
-    
-    def __init__(self, observation_space, action_space, **userconfig):   
+    def __init__(self, observation_space, action_space, **userconfig):    
         # Spaces
         self._observation_space = observation_space
         self._action_space = spaces.Box(-1, 1, (4,))
@@ -27,9 +26,9 @@ class DQNAgent(object):
         self._config = {
             "eps": 0.95,            # Initial epsilon for epsilon-greedy exploration
             "discount": 0.99,      # Discount factor for future rewards (gamma)
-            "buffer_size": int(2.5e5), # Size of the experience replay buffer
+            "buffer_size": int(3e5), # Size of the experience replay buffer
             "batch_size": 64,     # Batch size for sampling from buffer
-            "learning_rate": 0.00008, # Learning rate for neural network optimization
+            "learning_rate": 0.00007, # Learning rate for neural network optimization
             "use_target_net": True  # Use a separate target network for stability
         }
         self._config.update(userconfig)        
@@ -81,7 +80,7 @@ class DQNAgent(object):
     
     def train(self, iter_fit=8):
         """Training the agent using samples from the replay buffer."""
-        if self.buffer.size > 25e3:
+        if self.buffer.size > 30e3:
             losses = []
             self.train_iter += 1
             if self._config["use_target_net"]:
@@ -141,7 +140,7 @@ class DQNAgent(object):
         self.Q.load_state_dict(checkpoint['model_state_dict'])
         self.Q_target.load_state_dict(self.Q.state_dict())
 
-    def evaluate_model(self, env, mode, op, num_episodes=100, max_steps = 500):
+    def evaluate_model(self, env, mode, op, num_episodes=50, max_steps=200):
         total_reward = 0
         for _ in range(num_episodes):
             ob, _info = env.reset(mode=mode)
@@ -219,8 +218,6 @@ class DuelingFeedforward(torch.nn.Module):
         """
         with torch.no_grad():
             return self.forward(torch.from_numpy(x.astype(np.float32))).numpy()
-
-        
 
 
 class QFunction(DuelingFeedforward):
