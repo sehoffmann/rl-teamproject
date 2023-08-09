@@ -130,7 +130,7 @@ class DqnAgent(NNAgent):
             mean, std_log = combined.chunk(2)
             std = torch.exp(std_log)
             Qs = mean + (2*epsilon - 1)*std # interpolate between LCB and UCB
-            return Qs.argmax(dim=1).item()
+            return Qs.argmax().item()
 
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
