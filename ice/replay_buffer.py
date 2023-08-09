@@ -256,7 +256,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def _sample_proportional(self) -> List[int]:
         """Sample indices based on proportions."""
         indices = []
-        p_total = self.sum_tree.sum(0, len(self))
+        p_total = self.sum_tree.sum(0, len(self) - 1)
         segment = p_total / self.batch_size
 
         entropy = self.rng.random(size=self.batch_size) * segment
