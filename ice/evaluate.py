@@ -13,7 +13,7 @@ def main():
     parser.add_argument('-q', '--quiet', action='store_true')
     parser.add_argument('--no-basics', action='store_true')
     parser.add_argument('--no-default', action='store_true')
-    parser.add_argument('--no-stenz', action='store_true', default=True)
+    parser.add_argument('--no-stenz', action='store_true')
     args = parser.parse_args()
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -37,7 +37,11 @@ def main():
     ])
     tournament.add_agent('ensemble_bbln_temporal', ensemble1)
 
-    ensemble2 = MajorityVoteAgent([
+    ensemble2 = MajorityVoteAgent([ 
+        NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0004500000.pt', device=device),
+        NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0004400000.pt', device=device),
+        NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0004300000.pt', device=device),
+        NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0004200000.pt', device=device),
         NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0004100000.pt', device=device),
         NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0004000000.pt', device=device),
         NNAgent.load_model('models/final-BBLN-crps_20230809_03:17/frame_0003900000.pt', device=device),

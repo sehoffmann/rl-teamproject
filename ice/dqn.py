@@ -18,7 +18,7 @@ import plotting
 
 from dqn_stenz import get_stenz
 
-TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2']
+TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2', 'self-play']
 
 class NNAgent:
     ENV = IcyHockey()
@@ -325,6 +325,10 @@ class DqnTrainer:
         elif self.schedule == 'adv1':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
+        elif self.schedule == 'self-play':
+            if frame_idx % 500_000 == 0:
+                agent = self._copy_agent()
+                self.env.add_opponent('self', agent, prob=5, rolling=3)
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)

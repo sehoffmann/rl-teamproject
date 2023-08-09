@@ -199,7 +199,7 @@ def make_config(args):
         'softactions': args.softactions,
         'crps': args.crps,
         'crps_explore': args.crps,
-        'reward_shaping': True,
+        'reward_shaping': not args.no_shaping,
     }
     return config
 
@@ -254,6 +254,7 @@ def main():
     parser.add_argument('--softactions', action='store_true')
     parser.add_argument('--crps', action='store_true')
     parser.add_argument('--crps-explore', action='store_true')
+    parser.add_argument('--no-shaping', action='store_true')
 
     args = parser.parse_args()
 
