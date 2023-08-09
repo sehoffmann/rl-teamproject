@@ -125,6 +125,7 @@ class DqnAgent(NNAgent):
             epsilon = 0.0
 
         if self.crps and self.crps_explore:
+            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             combined = self.model(state).squeeze(0)
             mean, std_log = combined.chunk(2)
             std = torch.exp(std_log)
