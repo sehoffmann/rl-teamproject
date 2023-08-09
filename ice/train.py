@@ -263,8 +263,11 @@ def main():
     if args.advanced_schedule:
         phase1_config = config.copy()
         phase1_config['eps_decay'] = 1_000_000
-        phase1_config['frames'] = 3_000_000
+        phase1_config['frames'] = 2_000_000
         # phase1_config['frames'] = 100_000
+        phase1_config['bootstrap_frames'] = 300_000
+        phase1_config['cosine_annealing'] = True
+        phase1_config['nsteps'] = 4
         phase1_config['name'] += '-phase1'
         phase1_config['schedule'] = 'adv1'
         
@@ -281,7 +284,8 @@ def main():
         phase2_config['name'] += '-phase2'
         phase2_config['schedule'] = 'basic'
         phase2_config['rampup'] = 1_000_000
-        phase2_config['warmup_frames'] = 1_000
+        phase2_config['nsteps'] = 4
+        phase2_config['cosine_annealing'] = True
         phase2_config['reward_shaping'] = False
         phase2_config['checkpoint'] = str(checkpoint)
         init_wandb(phase2_config, args)
