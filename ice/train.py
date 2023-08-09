@@ -157,6 +157,8 @@ def train(config, model_dir, device):
 
     trainer.train(config['frames'])
 
+    wandb.finish()
+
 
 def create_model_dir(config):
     model_dir = Path(f'models') / f'{config["name"].replace(" ", "_")}_{datetime.datetime.now().strftime("%Y%m%d_%H:%M")}'
@@ -167,8 +169,8 @@ def create_model_dir(config):
 
 def init_wandb(config, args):
     wandb_mode = 'disabled' if args.no_wandb else 'online'
-    wandb_name = None if config['name'] == 'test' else args.name
-    wandb.init(project='ice', name=wandb_name, mode=wandb_mode)
+    wandb_name = None if config['name'] == 'test' else config['name']
+    wandb.init(project='ice', name=wandb_name, mode=wandb_mode, reinit=True)
     wandb.config.update(config)
 
 def make_config(args):
@@ -215,6 +217,8 @@ def run(config):
         json.dump(config, f, indent=4)
     train(config, model_dir, device)
 
+    return model_dir
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -255,30 +259,36 @@ def main():
 
     ## create config for phase 1 and phase 2
     config = make_config(args)
-    init_wandb(config, args)
-
+    
     if args.advanced_schedule:
         phase1_config = config.copy()
         phase1_config['eps_decay'] = 1_000_000
         phase1_config['frames'] = 3_000_000
+        # phase1_config['frames'] = 100_000
         phase1_config['name'] += '-phase1'
-        phase1_config['schedule'] = 'advanced-phase1'
-
-        run(phase1_config)
+        phase1_config['schedule'] = 'adv1'
+        
+        assert phase1_config['frames'] % 100_000 == 0, "frames must be divisible by checkpoint_frequency to support advanced schedule"
+        init_wandb(phase1_config, args)
+        prev_modeldir = run(phase1_config)
+        
+        checkpoint = prev_modeldir / f"frame_{phase1_config['frames']:010d}.pt"
 
         phase2_config = config.copy()
         phase2_config['eps_decay'] = 1
         phase2_config['frames'] = 15_000_000
+        # phase2_config['frames'] = 50_000
         phase2_config['name'] += '-phase2'
         phase2_config['schedule'] = 'basic'
         phase2_config['rampup'] = 1_000_000
-        phase2_config['warmup_frames'] = 1
+        phase2_config['warmup_frames'] = 1_000
         phase2_config['reward_shaping'] = False
-
+        phase2_config['checkpoint'] = str(checkpoint)
+        init_wandb(phase2_config, args)
         run(phase2_config)
-        
-
-    run(config)
+    else:
+        init_wandb(config, args)
+        run(config)
 
 
 

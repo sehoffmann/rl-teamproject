@@ -323,7 +323,7 @@ class DqnTrainer:
             if frame_idx >= 3_000_000 and frame_idx % 500_000 == 0:
                 agent = self._copy_agent()
                 self.env.add_opponent('self', agent, prob=5, rolling=3)
-        elif self.schedule == 'advanced-phase1':
+        elif self.schedule == 'adv1':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
         else:
