@@ -83,7 +83,7 @@ class NNAgent:
 
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
-        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False))
+        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False), crps=config.get('crps', False))
     
     @classmethod
     def load_lilith_weak(cls, device):
@@ -124,14 +124,13 @@ class DqnAgent(NNAgent):
         else:
             epsilon = 0.0
 
-        """
         if self.crps and self.crps_explore:
+            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             combined = self.model(state).squeeze(0)
             mean, std_log = combined.chunk(2)
             std = torch.exp(std_log)
-            lcb = mean - 1*std # lower confidence bound
-            Qs = lcb
-        """
+            Qs = mean + (2*epsilon - 1)*std # interpolate between LCB and UCB
+            return Qs.argmax().item()
 
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
@@ -207,7 +206,7 @@ class DqnAgent(NNAgent):
             cur_q_value, cur_std_log = self.model(state).chunk(2, dim=1) # B x D
             cur_q_value = cur_q_value.gather(1, action).squeeze(1) # B
             cur_std_log = cur_std_log.gather(1, action).squeeze(1) # B
-            loss = (1/100) * normal_kullback_div(cur_q_value, cur_std_log, gamma_next_val_dist_mean.detach(), gamma_next_val_dist_std_log.detach())
+            loss = (1/400) * normal_kullback_div(cur_q_value, cur_std_log, gamma_next_val_dist_mean.detach(), gamma_next_val_dist_std_log.detach())
         
         return loss
 

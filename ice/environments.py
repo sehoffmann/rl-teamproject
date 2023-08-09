@@ -77,6 +77,8 @@ class IcyHockey(HockeyEnv):
 
     def reset(self, *args, **kwargs):
         self.cur_opp_name, self.cur_opp_agent = self.sample_opponent()
+        if hasattr(self.cur_opp_agent, 'reset'):
+            self.cur_opp_agent.reset()
         obs, info = super().reset()
         self._augment_info(info)
         return obs, info
