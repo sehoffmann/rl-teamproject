@@ -2,11 +2,12 @@
 
 python ice/train.py \
     -n "ab6-lstm-big" \
-    --model "LSTM_big" \
+    --model "LSTM-big" \
     --schedule "basic" \
     -f 5000000 \
     --nsteps 4 \
     --eps-decay 2_000_000 \
     --cosine-annealing \
     --bootstrap-frames 300_000 \
+    --frame-stacks 3 \
     --crps
