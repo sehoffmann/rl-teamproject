@@ -18,7 +18,7 @@ import plotting
 
 from dqn_stenz import get_stenz
 
-TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2', 'self-play']
+TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2', 'self-play'] 
 
 class NNAgent:
     ENV = IcyHockey()
@@ -214,7 +214,7 @@ class DqnAgent(NNAgent):
 class DqnTrainer:
 
     def __init__(self, model_dir, env, agent, replay_buffer, device, frame_stacks=1, training_delay=100_000, update_frequency=1, checkpoint_frequency=100_000, schedule=None):
-        assert schedule is None or schedule in ['lilith', 'basic', 'adv1', 'adv2']
+        assert schedule is None or schedule in TRAINING_SCHEDULES
         
         self.model_dir = model_dir
         self.env = env
