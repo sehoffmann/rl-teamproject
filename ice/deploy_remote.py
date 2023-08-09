@@ -68,8 +68,6 @@ if __name__ == "__main__":
     parser.add_argument('--preset', type=str)
     parser.add_argument('--checkpoints', nargs='*')
     parser.add_argument('--identifier', type=str, default='iceq')
-    parser.add_argument('--username', type=str, default='user0')
-    parser.add_argument('--password', type=str, default='1234')
     parser.add_argument('--num-games', type=int, default=None)
     parser.add_argument('--no-cuda', action='store_true')
     args = parser.parse_args()
@@ -78,31 +76,36 @@ if __name__ == "__main__":
 
     username = 'Tübingen Ice Q-Learners'
     password = 'fie9Amai6r'
-    password = args.password
 
     if args.preset == 'crps':
-        dir1 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/models/final-BBLN-crps-explore_20230809_03:17/'
-        dir2 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/models/final-BBLN-crps-explore_20230809_03:45/'
-        dir3 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/models/final-BBLN-crps_20230809_03:17/'
-        agents = [
-            NNAgent.load_model(dir1 + 'frame_0004300000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0004400000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0004500000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0004600000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0004700000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0004800000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0003800000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0003900000.pt', device=device),
-            NNAgent.load_model(dir3 + 'frame_0004900000.pt', device=device),
-            NNAgent.load_model(dir3 + 'frame_0005000000.pt', device=device),
-            NNAgent.load_model(dir3 + 'frame_0005100000.pt', device=device),
-        ]
-        ensemble = MajorityVoteAgent(agents)
+        dir1 = 'models/final-BBLN-crps_20230809_03:17/'
+        dir2 = 'models/final-BBLN-crps-explore_20230809_03:17/'
+        ensemble = MajorityVoteAgent([
+            NNAgent.load_model(dir1 + 'frame_0005900000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0006000000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0006100000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0006200000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0005900000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0006000000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0006100000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0006200000.pt', device=device),
+        ])
         identifier = 'crps'
     elif args.preset == 'stenz':
         dir1 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/baselines/'
-        ensemble = get_stenz(dir1 + 'stenz_29700.pth', device=device)
+        ensemble = get_stenz(dir1 + 'stenz_37400.pth', device=device)
         identifier = 'stenz'
+    elif args.preset == 'adv':
+        dir1 = 'models/final-BBLN-crps-explore-adv-RERUN_20230809_11:10/'
+        dir2 = 'models/final-BBLN-crps-explore-adv-RERUN_20230809_11:15/'
+        agents = [
+            NNAgent.load_model(dir1 + 'frame_0000600000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0000700000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0000600000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0000700000.pt', device=device),
+        ]
+        ensemble = MajorityVoteAgent(agents)
+        identifier = 'crps-adv-explore'
     else:
         agents = [NNAgent.load_model(cp, device=device) for cp in args.checkpoints]
         ensemble = MajorityVoteAgent(agents)

@@ -29,6 +29,8 @@ class NNAgent:
         self.stacker = FrameStacker(frame_stacks)
         self.softactions = softactions
         self.crps = crps
+        self.ucb = False
+        self.greedy = False
 
     def reset(self):
         self.stacker.clear()
@@ -44,8 +46,14 @@ class NNAgent:
             combined = self.model(state)
             mean, std_log = combined.chunk(2, dim=1)
             std = torch.exp(std_log)
-            lcb = mean - 1*std # lower confidence bound
-            Qs = lcb
+            if self.ucb:
+                ucb = mean + 1*std # lower confidence bound
+                Qs = ucb
+            elif self.greedy:
+                Qs = mean
+            else:
+                lcb = mean - 1*std # lower confidence bound
+                Qs = lcb
         else:
             Qs = self.model(state)
 
@@ -66,7 +74,7 @@ class NNAgent:
         self.model.to(self.device)
 
     @classmethod
-    def load_model(cls, path, device):
+    def load_model(cls, path, device, ucb=False, greedy=False):
         path = Path(path)
         try:
             with open(path.parent / f'{path.stem}.json', 'r') as f:
@@ -83,8 +91,11 @@ class NNAgent:
 
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
-        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False), crps=config.get('crps', False))
-    
+        agent = cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False), crps=config.get('crps', False))
+        agent.ucb = ucb
+        agent.greedy = greedy
+        return agent
+
     @classmethod
     def load_lilith_weak(cls, device):
         path = Path('baselines') / 'lilith_weak.pt'

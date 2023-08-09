@@ -22,7 +22,7 @@ class Agent(ABC):
 class EloLeaderboard(dict):
     """Ideas based on https://en.wikipedia.org/wiki/Elo_rating_system"""
 
-    def __init__(self, start_elo=1000, max_k=400, min_k=20,  default_elos=True):
+    def __init__(self, start_elo=1000, max_k=60, min_k=10,  default_elos=True):
         self.start_elo = start_elo
         self.max_k = max_k
         self.min_k = min_k
