@@ -11,4 +11,4 @@ source ~/.bashrc
 source $PREAMBLE
 conda activate wb
 
-srun --mpi=pmix python ice/deploy_remote.py --username icyQ "$@"
+srun --mpi=pmix python ice/deploy_remote.py --username "Tübingen Ice Q-Learners" --password fie9Amai6r "$@"
