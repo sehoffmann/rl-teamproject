@@ -93,7 +93,7 @@ def train(config, model_dir, device):
     # Replay Buffer
     obs_shape = [config['frame_stacks'], env.observation_space.shape[0]]
     if not config['priority_rp']:
-        replay_buffer = ReplayBuffer(obs_shape, config['buffer_size'], config['batch_size'])
+        replay_buffer = ReplayBuffer(obs_shape, config['buffer_size'], config['batch_size'], n_step=config['nsteps'])
     else:
         replay_buffer = PrioritizedReplayBuffer(
             obs_shape, 
