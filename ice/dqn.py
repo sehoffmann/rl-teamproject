@@ -83,7 +83,7 @@ class NNAgent:
 
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
-        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False))
+        return cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False), crps=config.get('crps', False))
     
     @classmethod
     def load_lilith_weak(cls, device):
