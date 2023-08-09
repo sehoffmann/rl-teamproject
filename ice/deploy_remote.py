@@ -1,12 +1,14 @@
 import argparse
 import torch
-from tournament_client.client.remoteControllerInterface import RemoteControllerInterface
+import os
 from dqn import NNAgent
 from numpy import ndarray
 from pathlib import Path
 import numpy as np
-from tournament_client.client.backend.client import Client
+from client.remoteControllerInterface import RemoteControllerInterface
+from client.backend.client import Client
 from environments import IcyHockey
+from dqn_stenz import get_stenz
 
 class MajorityVoteAgent:
     ENV = IcyHockey()
@@ -48,11 +50,12 @@ class RemoteNNAgent(RemoteControllerInterface):
 
 get_log_dir = lambda name: f"tournament_client/logs/{name}"
 
-def create_client(controller: RemoteControllerInterface, args):
-    client = Client(username=args.username,
-                    password=args.password,
+def create_client(controller: RemoteControllerInterface, username, password, identifier):
+    out_dir = Path(os.environ.get('SCRATCH','')) / 'tournament_client' / identifier 
+    client = Client(username=username,
+                    password=password,
                     controller=controller,
-                    output_path=get_log_dir(args.identifier), # rollout buffer with finished games will be saved in here
+                    output_path=str(out_dir), # rollout buffer with finished games will be saved in here
                     interactive=False,
                     op='start_queuing',
                     # server_addr='localhost',
@@ -62,7 +65,8 @@ def create_client(controller: RemoteControllerInterface, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('checkpoints', nargs='+')
+    parser.add_argument('--preset', type=str)
+    parser.add_argument('--checkpoints', nargs='*')
     parser.add_argument('--identifier', type=str, default='iceq')
     parser.add_argument('--username', type=str, default='user0')
     parser.add_argument('--password', type=str, default='1234')
@@ -72,11 +76,40 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu'
 
-    agents = [NNAgent.load_model(cp, device=device) for cp in args.checkpoints]
-    ensemble = MajorityVoteAgent(agents)
+    username = 'Tübingen Ice Q-Learners'
+    password = 'fie9Amai6r'
+    password = args.password
 
-    controller = RemoteNNAgent(args.identifier, ensemble)
-    client = create_client(controller, args)
+    if args.preset == 'crps':
+        dir1 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/models/final-BBLN-crps-explore_20230809_03:17/'
+        dir2 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/models/final-BBLN-crps-explore_20230809_03:45/'
+        dir3 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/models/final-BBLN-crps_20230809_03:17/'
+        agents = [
+            NNAgent.load_model(dir1 + 'frame_0004300000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0004400000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0004500000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0004600000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0004700000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0004800000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0003800000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0003900000.pt', device=device),
+            NNAgent.load_model(dir3 + 'frame_0004900000.pt', device=device),
+            NNAgent.load_model(dir3 + 'frame_0005000000.pt', device=device),
+            NNAgent.load_model(dir3 + 'frame_0005100000.pt', device=device),
+        ]
+        ensemble = MajorityVoteAgent(agents)
+        identifier = 'crps'
+    elif args.preset == 'stenz':
+        dir1 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/baselines/'
+        ensemble = get_stenz(dir1 + 'stenz_29700.pth', device=device)
+        identifier = 'stenz'
+    else:
+        agents = [NNAgent.load_model(cp, device=device) for cp in args.checkpoints]
+        ensemble = MajorityVoteAgent(agents)
+        identifier = args.identifier
+
+    controller = RemoteNNAgent(identifier, ensemble)
+    client = create_client(controller, username, password, identifier)
 
     
     
