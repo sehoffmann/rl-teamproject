@@ -183,18 +183,20 @@ class HockeyTournamentEvaluation():
             self.evaluate_agent(name, n_games=num_games)
     
     def get_pairing(self, name):
-        alpha = 0.7 # softness factor
+        alpha = 0.5 # softness factor
         eps = 20
         elo = self.leaderboard[name]
         
-        sample_weights = [1/(eps + (np.abs(elo - self.leaderboard[name]))**alpha) for name in self.agents]        
-        own_idx = np.argmax(np.array(self.agents) == name)
-        sample_weights[own_idx] = 0.0
-        sample_weights = np.array(sample_weights) / sum(sample_weights)
-        
-        # print(sample_weights)
-        opponents = np.random.choice(list(self.agents), size=1, p=sample_weights)
-        return (name, opponents[0])
+        while True:
+            sample_weights = [1/(eps + (np.abs(elo - self.leaderboard[name]))**alpha) for name in self.agents]        
+            own_idx = np.argmax(np.array(self.agents) == name)
+            sample_weights[own_idx] = 0.0
+            sample_weights = np.array(sample_weights) / sum(sample_weights)
+            opponent_idx = np.random.choice(len(self.agents), size=1, p=sample_weights)[0]
+            if opponent_idx != own_idx:
+                break
+        opponent = list(self.agents.keys())[opponent_idx]
+        return (name, opponent)
     
     def random_plays(self, n_plays=10, verbose=False):
         names = list(self.agents.keys())
@@ -205,6 +207,7 @@ class HockeyTournamentEvaluation():
             new_elo1, new_elo2 = self.leaderboard.update_rating(name1, name2, result=res)
             if verbose:
                 print(f'{name1} ({new_elo1:.1f}) vs {name2} ({new_elo2:.1f}): {res}')
+            yield self.leaderboard.elos.copy()
 
     def run_n_games(self, name1, name2, n = 1, save_gif=False):
         for _ in range(n):
