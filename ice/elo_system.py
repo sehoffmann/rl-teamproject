@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import json
 
 import torch
+import numpy as np
 
 from PIL import Image
 import numpy as np
@@ -27,6 +28,7 @@ class EloLeaderboard(dict):
         self.max_k = max_k
         self.min_k = min_k
         self.elos = {}
+        self.histories = {}
         self.num_games = {}
         if default_elos:
             self.load_default_ratings()
@@ -48,11 +50,18 @@ class EloLeaderboard(dict):
     
     def __delitem__(self, key):
         del self.elos[key]
+        del self.histories[key]
 
-    def add_agent(self, agent, elo=None):
+    def mean_elos(self, n=10):
+        return {k: np.mean(v[-n:]) for k, v in self.histories.items()}
+
+    def add_agent(self, agent, elo=None, num_games=0):
         if agent not in self:
-            self[agent] = elo if elo is not None else self.start_elo
-    
+            elo = elo if elo is not None else self.start_elo
+            self[agent] = elo
+            self.histories[agent] = [elo]
+            self.num_games[agent] = num_games
+
     def get_win_probs(self, agent_a: str, agent_b: str):
         delta = self[agent_b] - self[agent_a]
         p_a_wins = 1 / (1 + 10**(delta / 400))
@@ -61,8 +70,8 @@ class EloLeaderboard(dict):
     def calculate_new_elos(self, agent_a: str, agent_b: str, result):
         result_a, result_b = result
         expect_a, expect_b = self.get_win_probs(agent_a, agent_b)
-        K_a = max(self.min_k, self.max_k / (self.num_games.get(agent_a, 0) + 1))
-        K_b = max(self.min_k, self.max_k / (self.num_games.get(agent_b, 0) + 1))
+        K_a = max(self.min_k, self.max_k * 0.95**(self.num_games.get(agent_a, 0) + 1))
+        K_b = max(self.min_k, self.max_k * 0.95**(self.num_games.get(agent_b, 0) + 1))
         new_a = self[agent_a] + K_a * (result_a - expect_a)
         new_b = self[agent_b] + K_b * (result_b - expect_b)
         return new_a, new_b
@@ -76,23 +85,18 @@ class EloLeaderboard(dict):
         e.g. player 1 beat player 2: (1, 0)
         a draw: (0.5, 0.5)
         """
+        self.histories[agent_a].append(self[agent_a])
+        self.histories[agent_b].append(self[agent_b])
         self[agent_a], self[agent_b] = self.calculate_new_elos(agent_a, agent_b, result)
         self.num_games[agent_a] = self.num_games.get(agent_a, 0) + 1
         self.num_games[agent_b] = self.num_games.get(agent_b, 0) + 1
         return self[agent_a], self[agent_b]
 
     def load_default_ratings(self):
-        self.elos['basic_weak'] = 930
-        self.num_games['basic_weak'] = 20
-        
-        self.elos['basic_strong'] = 900
-        self.num_games['basic_strong'] = 20
-
-        self.elos['stenz'] = 875
-        self.num_games['stenz'] = 20
-
-        self.elos['lilith_weak'] = 990
-        self.num_games['lilith'] = 20
+        self.add_agent('basic_weak', elo=930, num_games=20)
+        self.add_agent('basic_strong', elo=900, num_games=20)
+        self.add_agent('stenz', elo=875, num_games=20)
+        self.add_agent('lilith_weak', elo=990, num_games=20)
 
     def save(self, path):
         with open(path, "w") as fp:
@@ -153,8 +157,8 @@ class HockeyTournamentEvaluation():
         self.leaderboard = EloLeaderboard(start_elo=start_elo, default_elos=default_elos)
         self.agents = {}
         if add_basics:
-            self.agents['basic_weak'] = lh.BasicOpponent()
-            self.agents['basic_strong'] = lh.BasicOpponent(weak=False)
+            self.add_agent('basic_weak', lh.BasicOpponent())
+            self.add_agent('basic_strong', lh.BasicOpponent(weak=False))
     
     def __getitem__(self, key):
         return self.agents[key]
