@@ -1,4 +1,5 @@
 import argparse
+import pprint
 import torch
 from elo_system import HockeyTournamentEvaluation
 from dqn import NNAgent
@@ -12,14 +13,13 @@ def main():
     parser.add_argument('-n', '--games', type=int, default=5000)
     parser.add_argument('-q', '--quiet', action='store_true')
     parser.add_argument('--no-basics', action='store_true')
-    parser.add_argument('--no-default', action='store_true')
     parser.add_argument('--no-stenz', action='store_true')
     parser.add_argument('--ab', type=int, default=1)
     args = parser.parse_args()
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    tournament = HockeyTournamentEvaluation(add_basics=not args.no_basics, default_elos=not args.no_default)
+    tournament = HockeyTournamentEvaluation(add_basics=not args.no_basics, default_elos=False)
     tournament.add_agent('lilith-weak', NNAgent.load_lilith_weak(device=device))
     
     for cp in args.checkpoints:
@@ -57,17 +57,19 @@ def main():
     
     elif args.ab == 3:
         ablation = {
-            "ab3-DoubleQ": "models/ab3-DoubleQ_20230808_18:48/frame_0005000000.pt" ,
-            "ab3-DoubleQ-Dueling": "models/ab3-DoubleQ-Dueling_20230808_18:48/frame_0005000000.pt" ,
-            # "ab3-DoubleQ-Dueling-PER": "models/ab3-DoubleQ-Dueling-PER_20230808_18:48/frame_0005000000.pt" ,
-            # "ab3-DoubleQ-Dueling-PER": "models/ab3-DoubleQ-Dueling-PER_20230808_19:30/frame_0005000000.pt" ,
-            "ab3-nothing": "models/ab3-nothing_20230808_18:48/frame_0005000000.pt" ,
-            # "ab3-PER": "models/ab3-PER_20230808_18:48 models/ab3-PER_20230808_19:27/frame_0005000000.pt" ,
-            # "ab3-PER": "models/ab3-PER-Dueling_20230808_18:48/frame_0005000000.pt"
+            "ab2-nsteps4": "models/ab2-nsteps4_20230808_17:21/frame_0005000000.pt",
+            "ab3-DoubleQ": "models/ab3-DoubleQ_20230810_00:20/frame_0005000000.pt" ,
+            "ab3-DoubleQ-Dueling": "models/ab3-DoubleQ-Dueling_20230810_00:20/frame_0005000000.pt" ,
+            "ab3-DoubleQ-Dueling-PER": "models/ab3-DoubleQ-Dueling-PER_20230810_00:20/frame_0005000000.pt" ,
+            "ab3-nothing": "models/ab3-nothing_20230810_00:20/frame_0005000000.pt" ,
+            "ab3-PER-Dueling": "models/ab3-PER-Dueling_20230810_00:20/frame_0005000000.pt",
+            "ab3-PER": "models/ab3-PER_20230810_00:18/frame_0005000000.pt",
         }
     
     elif args.ab == 4:
         ablation = {
+            "ab2-nsteps4": "models/ab2-nsteps4_20230808_17:21/frame_0005000000.pt",
+            "ab4-lilith-strong": "models/ab4-lilith-strong_20230808_22:32/frame_0005000000.pt",
             "ab4-baseline1":"models/ab4-baseline1_20230808_22:32/frame_0005000000.pt",
             "ab4-baseline1_layernorm":"models/ab4-baseline1_layernorm_20230808_22:32/frame_0005000000.pt",
             "ab4-baseline1_ln_big":"models/ab4-baseline1_ln_big_20230808_22:32/frame_0005000000.pt"
@@ -75,6 +77,7 @@ def main():
 
     elif args.ab == 5:
         ablation = {
+            "ab4-baseline1_ln_big": "models/ab4-baseline1_ln_big_20230808_22:32/frame_0005000000.pt",
             "ab5-baseline1_layernorm_stack": "models/ab5-baseline1_layernorm_stack_20230808_22:45/frame_0005000000.pt",
             "ab5-baseline1_ln_big_stack": "models/ab5-baseline1_ln_big_stack_20230808_22:46/frame_0005000000.pt", 
             "ab5-lilith_stack": "models/ab5-lilith_stack_20230808_22:45/frame_0005000000.pt", 
@@ -84,6 +87,7 @@ def main():
 
     elif args.ab == 6:
         ablation = {
+            "ab4-baseline1_ln_big": "models/ab4-baseline1_ln_big_20230808_22:32/frame_0005000000.pt",
             "ab6-base1lnbig": "models/ab6-base1lnbig_20230809_02:37/frame_0005000000.pt", 
             "ab6-base1lnbig-exp":"models/ab6-base1lnbig-explore_20230809_02:37/frame_0005000000.pt", 
             "ab6-lilith1":"models/ab6-lilith_20230809_02:36/frame_0005000000.pt", 
@@ -97,15 +101,19 @@ def main():
 
     print(f'Playing {args.games} games...')
     try:
-        elos = []
-        for cur_elos in tournament.random_plays(n_plays=args.games, verbose=not args.quiet):
-            elos.append(cur_elos)
+        i = 1
+        for _ in tournament.random_plays(n_plays=args.games, verbose=not args.quiet):
+            if i % 500 == 0:
+                print(f'Played {i} games')
+                elos = tournament.leaderboard.mean_elos()
+                elos_sorted = list(sorted(elos.items(), key=lambda x: x[1], reverse=True))
+                pprint.pprint(elos_sorted, indent=4)
+                print()
+                tournament.leaderboard.save(f'evaluation/ab{args.ab}.json')
+                
+            i += 1
     except KeyboardInterrupt:
         pass
-    df = pd.DataFrame.from_records(elos)
-    print('--------------------------')
-    print()
-    print(df.tail(200).mean().sort_values(ascending=False))
 
 if __name__ == '__main__':
     main()
