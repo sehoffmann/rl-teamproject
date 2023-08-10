@@ -81,14 +81,12 @@ if __name__ == "__main__":
         dir1 = 'models/final-BBLN-crps_20230809_03:17/'
         dir2 = 'models/final-BBLN-crps-explore_20230809_03:17/'
         ensemble = MajorityVoteAgent([
-            NNAgent.load_model(dir1 + 'frame_0005900000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0006000000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0006100000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0006200000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0005900000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0006000000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0006100000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0006200000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0007500000.pt', device=device, ucb=True),
+            NNAgent.load_model(dir1 + 'frame_0007600000.pt', device=device, ucb=True),
+            NNAgent.load_model(dir1 + 'frame_0007700000.pt', device=device, ucb=True),
+            #NNAgent.load_model(dir2 + 'frame_0007500000.pt', device=device, ucb=True),
+            #NNAgent.load_model(dir2 + 'frame_0007600000.pt', device=device, ucb=True),
+            #NNAgent.load_model(dir2 + 'frame_0007700000.pt', device=device, ucb=True),
         ])
         identifier = 'crps'
     elif args.preset == 'stenz':
@@ -99,10 +97,10 @@ if __name__ == "__main__":
         dir1 = 'models/final-BBLN-crps-explore-adv-RERUN_20230809_11:10/'
         dir2 = 'models/final-BBLN-crps-explore-adv-RERUN_20230809_11:15/'
         agents = [
-            NNAgent.load_model(dir1 + 'frame_0000600000.pt', device=device),
-            NNAgent.load_model(dir1 + 'frame_0000700000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0000600000.pt', device=device),
-            NNAgent.load_model(dir2 + 'frame_0000700000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0003600000.pt', device=device),
+            NNAgent.load_model(dir1 + 'frame_0003700000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0003600000.pt', device=device),
+            NNAgent.load_model(dir2 + 'frame_0003700000.pt', device=device),
         ]
         ensemble = MajorityVoteAgent(agents)
         identifier = 'crps-adv-explore'
