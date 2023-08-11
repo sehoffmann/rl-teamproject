@@ -84,9 +84,6 @@ if __name__ == "__main__":
             NNAgent.load_model(dir1 + 'frame_0007500000.pt', device=device, ucb=True),
             NNAgent.load_model(dir1 + 'frame_0007600000.pt', device=device, ucb=True),
             NNAgent.load_model(dir1 + 'frame_0007700000.pt', device=device, ucb=True),
-            #NNAgent.load_model(dir2 + 'frame_0007500000.pt', device=device, ucb=True),
-            #NNAgent.load_model(dir2 + 'frame_0007600000.pt', device=device, ucb=True),
-            #NNAgent.load_model(dir2 + 'frame_0007700000.pt', device=device, ucb=True),
         ])
         identifier = 'crps'
     elif args.preset == 'stenz':

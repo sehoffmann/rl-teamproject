@@ -381,7 +381,6 @@ class DqnTrainer:
 
     def checkpoint(self, frame_idx):
         self.update_elo(frame_idx)
-
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(self.model_dir / f'{name}.pt')
 

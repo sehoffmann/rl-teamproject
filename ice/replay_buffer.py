@@ -8,20 +8,6 @@ from decay import BetaDecay
 
 
 class ReplayBuffer:
-    """A simple numpy replay buffer.
-    Parameters
-    ---------
-    obs_dim: list[int]
-        Observation shape
-    size: int
-        # maximum number of elements in buffer
-    batch_size: int
-        batch_size
-    n_step: int
-        number of step used for N-step learning
-    gamma: float
-        gamma value
-    """
 
     def __init__(
             self,
@@ -53,8 +39,7 @@ class ReplayBuffer:
             rew: float,
             next_obs: np.ndarray,
             done: bool,
-    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool] or None:
-        """Store a new experience in the buffer"""
+    ):
         transition = (obs, act, rew, next_obs, done)
         self.n_step_buffer.append(transition)
 
@@ -62,10 +47,7 @@ class ReplayBuffer:
         if len(self.n_step_buffer) < self.n_step:
             return
 
-        # make a n-step transition
-        # take the n-reward, n-observation and n-done
         rew, next_obs, done = self._get_n_step()
-        # take the 1-observation and 1-action
         obs, act = self._get_first_step()
 
         # store the transition
@@ -93,7 +75,6 @@ class ReplayBuffer:
         return batch_torch
 
     def sample_batch(self, num_frames=1):
-        """Sample a batch from the buffer"""
         assert len(self) >= self.batch_size
         idxs = self.rng.integers(self.size, size=self.batch_size)
 
@@ -108,8 +89,6 @@ class ReplayBuffer:
         )
 
     def sample_batch_from_idxs(self, idxs: np.ndarray):
-        """Sample a batch given some fixed idxs"""
-        # for N-step Learning
         return dict(
             obs=self.obs_buf[idxs],
             next_obs=self.next_obs_buf[idxs],
@@ -119,25 +98,18 @@ class ReplayBuffer:
         )
 
     def _get_n_step(self) -> Tuple[np.int64, np.ndarray, bool]:
-        """Return n step rew, next_obs, and done."""
         # info of the last transition
         rew, next_obs, done = self.n_step_buffer[-1][-3:]
 
         for transition in reversed(list(self.n_step_buffer)[:-1]):
             r, n_o, d = transition[-3:]
-            # update the reward
             rew = r + self.gamma * rew * (1 - d)
-            # if done == 1: next_obs is the first observation where done == 1
-            # if done == 0: next_obs is the n-observation
             next_obs, done = (n_o, d) if d else (next_obs, done)
 
         return rew, next_obs, done
 
     def _get_first_step(self) -> Tuple[np.int64, np.ndarray]:
-        """Return first step obs and act."""
-        # info of the first transition
         obs, act = self.n_step_buffer[0][:2]
-
         return obs, act
 
     def __len__(self) -> int:
@@ -145,19 +117,6 @@ class ReplayBuffer:
 
 
 class PrioritizedReplayBuffer(ReplayBuffer):
-    """Prioritized Replay buffer.
-    Attributes:
-        max_priority: float
-            max priority
-        tree_ptr: int
-            next index of tree
-        alpha: float
-            alpha parameter for prioritized replay buffer
-        sum_tree: SumSegmentTree
-            sum tree for prior
-        min_tree: MinSegmentTree
-            min tree for min prior to get max weight
-    """
 
     def __init__(
             self,

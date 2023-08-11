@@ -4,8 +4,6 @@ import torch
 from elo_system import HockeyTournamentEvaluation
 from dqn import NNAgent
 from dqn_stenz import get_stenz
-import pandas as pd
-from deploy_remote import MajorityVoteAgent
 
 def main():
     parser = argparse.ArgumentParser()
@@ -68,11 +66,10 @@ def main():
     
     elif args.ab == 4:
         ablation = {
-            "ab2-nsteps4": "models/ab2-nsteps4_20230808_17:21/frame_0005000000.pt",
-            "ab4-lilith-strong": "models/ab4-lilith-strong_20230808_22:32/frame_0005000000.pt",
+            "ab2-nsteps4": "models/ab2-nsteps4_20230808_17:21/frame_0005000000.pt", # <- this has no bootstrapping !
             "ab4-baseline1":"models/ab4-baseline1_20230808_22:32/frame_0005000000.pt",
             "ab4-baseline1_layernorm":"models/ab4-baseline1_layernorm_20230808_22:32/frame_0005000000.pt",
-            "ab4-baseline1_ln_big":"models/ab4-baseline1_ln_big_20230808_22:32/frame_0005000000.pt"
+            "ab4-baseline1_ln_big":"models/ab4-baseline1_ln_big_20230808_22:32/frame_0005000000.pt",
         }
 
     elif args.ab == 5:
@@ -82,38 +79,34 @@ def main():
             "ab5-baseline1_ln_big_stack": "models/ab5-baseline1_ln_big_stack_20230808_22:46/frame_0005000000.pt", 
             "ab5-lilith_stack": "models/ab5-lilith_stack_20230808_22:45/frame_0005000000.pt", 
             "ab5-LSTM-big": "models/ab5-LSTM-big_20230808_22:46/frame_0005000000.pt", 
-            "ab5-LSTM-small": "models/ab5-LSTM-small_20230808_22:45/frame_0005000000.pt"
+            "ab5-LSTM-small": "models/ab5-LSTM-small_20230808_22:45/frame_0005000000.pt",
         }
 
     elif args.ab == 6:
         ablation = {
+            "ab4-baseline1_ln": "models/ab4-baseline1_layernorm_20230808_22:32/frame_0005000000.pt",
             "ab4-baseline1_ln_big": "models/ab4-baseline1_ln_big_20230808_22:32/frame_0005000000.pt",
+            "ab1-lilith-strong": "models/ab1-lilith-strong-bt300k-nosoft_20230808_17:19/frame_0005000000.pt",
             "ab6-base1lnbig": "models/ab6-base1lnbig_20230809_02:37/frame_0005000000.pt", 
             "ab6-base1lnbig-exp":"models/ab6-base1lnbig-explore_20230809_02:37/frame_0005000000.pt", 
-            "ab6-lilith1":"models/ab6-lilith_20230809_02:36/frame_0005000000.pt", 
+            "ab6-lilith":"models/ab6-lilith_20230809_02:36/frame_0005000000.pt", 
             "ab6-lilith-exp":"models/ab6-lilith-explore_20230809_02:36/frame_0005000000.pt", 
-            "ab6-lstm-big":"models/ab6-lstm-big_20230809_02:43/frame_0005000000.pt", 
-            "ab6-lstm-big-exp":"models/ab6-lstm-big-explore_20230809_02:43/frame_0005000000.pt",
         }
 
     for name, cp in ablation.items():
         tournament.add_agent(name, NNAgent.load_model(cp, device=device))    
 
     print(f'Playing {args.games} games...')
-    try:
-        i = 1
-        for _ in tournament.random_plays(n_plays=args.games, verbose=not args.quiet):
-            if i % 500 == 0:
-                print(f'Played {i} games')
-                elos = tournament.leaderboard.mean_elos()
-                elos_sorted = list(sorted(elos.items(), key=lambda x: x[1], reverse=True))
-                pprint.pprint(elos_sorted, indent=4)
-                print()
-                tournament.leaderboard.save(f'evaluation/ab{args.ab}.json')
-                
-            i += 1
-    except KeyboardInterrupt:
-        pass
+    i = 1
+    for _ in tournament.random_plays(n_plays=args.games, verbose=not args.quiet):
+        if i % 500 == 0:
+            print(f'Played {i} games')
+            elos = tournament.leaderboard.mean_elos()
+            elos_sorted = list(sorted(elos.items(), key=lambda x: x[1], reverse=True))
+            pprint.pprint(elos_sorted, indent=4)
+            print()
+            tournament.leaderboard.save(f'evaluation/ab{args.ab}.json')  
+        i += 1
 
 if __name__ == '__main__':
     main()
