@@ -16,8 +16,6 @@ from elo_system import HockeyTournamentEvaluation
 from crps import normal_kullback_div
 import plotting
 
-from dqn_stenz import get_stenz
-
 TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2', 'self-play'] 
 
 class NNAgent:
@@ -86,9 +84,6 @@ class NNAgent:
             with open(path.parent / 'config.json', 'r') as f:
                 config = json.load(f)
 
-        if config.get('is_stenz', False):
-            return get_stenz(path, device)
-
         model = torch.load(path, map_location=device)
         model.eval().requires_grad_(False)
         agent = cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False), crps=config.get('crps', False))
@@ -99,16 +94,6 @@ class NNAgent:
     @classmethod
     def load_lilith_weak(cls, device):
         path = Path('baselines') / 'lilith_weak.pt'
-        return cls.load_model(path, device)
-    
-    @classmethod
-    def load_stenz_weak(cls, device):
-        path = Path('baselines') / 'stenz.pth'
-        return cls.load_model(path, device)
-
-    @classmethod
-    def load_stenz_strong(cls, device):
-        path = Path('baselines') / 'stenz_29700.pth'
         return cls.load_model(path, device)
 
 class DqnAgent(NNAgent):

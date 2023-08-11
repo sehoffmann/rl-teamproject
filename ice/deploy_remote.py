@@ -8,7 +8,6 @@ import numpy as np
 from client.remoteControllerInterface import RemoteControllerInterface
 from client.backend.client import Client
 from environments import IcyHockey
-from dqn_stenz import get_stenz
 
 class MajorityVoteAgent:
     ENV = IcyHockey()
@@ -86,10 +85,6 @@ if __name__ == "__main__":
             NNAgent.load_model(dir1 + 'frame_0007700000.pt', device=device, ucb=True),
         ])
         identifier = 'crps'
-    elif args.preset == 'stenz':
-        dir1 = '/mnt/qb/work2/goswami0/gkd021/code/rl-teamproject/baselines/'
-        ensemble = get_stenz(dir1 + 'stenz_37400.pth', device=device)
-        identifier = 'stenz'
     elif args.preset == 'adv':
         dir1 = 'models/final-BBLN-crps-explore-adv-RERUN_20230809_11:10/'
         dir2 = 'models/final-BBLN-crps-explore-adv-RERUN_20230809_11:15/'

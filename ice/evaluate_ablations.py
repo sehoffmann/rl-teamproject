@@ -3,7 +3,6 @@ import pprint
 import torch
 from elo_system import HockeyTournamentEvaluation
 from dqn import NNAgent
-from dqn_stenz import get_stenz
 
 def main():
     parser = argparse.ArgumentParser()
@@ -11,7 +10,6 @@ def main():
     parser.add_argument('-n', '--games', type=int, default=5000)
     parser.add_argument('-q', '--quiet', action='store_true')
     parser.add_argument('--no-basics', action='store_true')
-    parser.add_argument('--no-stenz', action='store_true')
     parser.add_argument('--ab', type=int, default=1)
     args = parser.parse_args()
 
@@ -23,11 +21,6 @@ def main():
     for cp in args.checkpoints:
         tournament.add_agent(cp, NNAgent.load_model(cp, device=device))
     
-    if not args.no_stenz:
-        tournament.add_agent('stenz1', get_stenz('baselines/stenz.pth', device=device))
-        tournament.add_agent('stenz2', get_stenz('baselines/stenz_29700.pth', device=device))
-        tournament.add_agent('stenz3', get_stenz('baselines/stenz_37400.pth', device=device))
-
     if args.ab == 1:
         ### Ablation 1
         ablation = {
