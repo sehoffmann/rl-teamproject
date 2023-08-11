@@ -123,21 +123,3 @@ class Tracker:
 
     def log(self, key, value):
         self.interval_metrics.add(key, value)
-
-    def save_csv(self, path):
-        df = pd.DataFrame()
-        for key in self.values:
-            df[key] = pd.Series([v[1] for v in self.values[key]], [v[0] for v in self.values[key]])
-        df.to_csv(path)
-
-    def plot(self, keys, title=None, smoothing=0.0):
-        fig = plt.figure(figsize=(12,6))
-        for key in keys:
-            x = [v[0] for v in self.values[key]]
-            vals = [v[1] for v in self.values[key]]
-            if smoothing > 0:
-                vals = pd.Series(vals).ewm(alpha=1-smoothing).mean()
-            plt.plot(x, vals, label=key)
-        plt.legend()
-        plt.title(title)
-        return fig
