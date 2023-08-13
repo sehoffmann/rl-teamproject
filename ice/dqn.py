@@ -334,12 +334,12 @@ class DqnTrainer:
             if frame_idx < 100_000 or len(self.tracker.win_rate_history) < 10:
                 return
             
-            if frame_idx - self.last_update < 200_000:
+            if frame_idx - self.last_update < 300_000:
                 return
             
             win_rate = np.mean(self.tracker.win_rate_history[-10:])
             if win_rate > 70.0:
-                self._add_self(frame_idx, p_total=3, rolling=3)
+                self._add_self(frame_idx, p_total=3, rolling=4)
                 self.last_update = frame_idx
 
         else:
