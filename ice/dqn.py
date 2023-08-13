@@ -45,7 +45,7 @@ class DqnInferenceAgent(NNAgent):
             mean, std = combined.chunk(2, dim=1)
             std = crps.positive_std(std)
             Qs = mean + self.phi*std
-        if self.loss == 'crps':
+        elif self.loss == 'crps':
             combined = self.model(state)
             mean, std, _, _ = combined.chunk(4, dim=1)
             std = crps.positive_std(std)
