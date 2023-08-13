@@ -1,59 +1,59 @@
 import copy
 import itertools
-from pathlib import Path
-import json
-import math
 
 import torch
 import torch.nn.functional as F
 import numpy as np
+import wandb
 
 from decay import EpsilonDecay
-from environments import IcyHockey
+
 from replay_buffer import PrioritizedReplayBuffer, FrameStacker
 from tracking import Tracker
 from elo_system import HockeyTournamentEvaluation
-from crps import normal_kullback_div
+import crps
+from agent import NNAgent
 import plotting
 
-TRAINING_SCHEDULES = ['lilith', 'basic', 'adv1', 'adv2', 'self-play'] 
+TRAINING_SCHEDULES = ['basic', 'adv1', 'adv2', 'self-play'] 
 
-class NNAgent:
-    ENV = IcyHockey()
+class DqnInferenceAgent(NNAgent):
 
-    def __init__(self, model, device, frame_stacks=1, softactions=False, crps=False):
-        self.model = model
-        self.device = device
-        self.stacker = FrameStacker(frame_stacks)
-        self.softactions = softactions
-        self.crps = crps
-        self.ucb = False
-        self.greedy = False
+    def __init__(self, model, device, frame_stacks=None, loss=None, phi=None, softactions=None):
+        super().__init__(model, device, frame_stacks)
+        self.loss = loss if loss is not None else 'td'
+        self.phi = phi if phi is not None else 0.0
+        self.softactions = softactions if softactions is not None else False
 
-    def reset(self):
-        self.stacker.clear()
 
-    def act(self, state):
-        state = self.stacker.append_and_stack(state)
-        action_discrete = self.select_action(state)
-        return self.ENV.discrete_to_continous_action(action_discrete)
+    @classmethod
+    def _load_model(cls, model, config, device):
+        return cls(
+            model, 
+            device, 
+            frame_stacks=config['frame_stacks'], 
+            loss=config.get('loss'), 
+            phi=config.get('phi'),
+            softactions=config.get('softactions')
+        )
 
-    def select_action(self, state, frame_idx=None):
+
+    def select_action(self, state, frame_idx=None, train=False):
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        if self.crps:
+        if self.loss == 'ndqn':
             combined = self.model(state)
-            mean, std_log = combined.chunk(2, dim=1)
-            std = torch.exp(std_log)
-            if self.ucb:
-                ucb = mean + 1*std # lower confidence bound
-                Qs = ucb
-            elif self.greedy:
-                Qs = mean
-            else:
-                lcb = mean - 1*std # lower confidence bound
-                Qs = lcb
-        else:
+            mean, std = combined.chunk(2, dim=1)
+            std = crps.positive_std(std)
+            Qs = mean + self.phi*std
+        if self.loss == 'crps':
+            combined = self.model(state)
+            mean, std, _, _ = combined.chunk(4, dim=1)
+            std = crps.positive_std(std)
+            Qs = mean + self.phi*std
+        elif self.loss == 'td':
             Qs = self.model(state)
+        else:
+            raise ValueError(f"Unknown loss: {self.loss}")
 
         if not self.softactions:
             return Qs.argmax(dim=1).item()
@@ -61,73 +61,29 @@ class NNAgent:
             probs = F.softmax(Qs, dim=1).squeeze(0)
             return np.random.choice(len(probs), p=probs.cpu().detach().numpy())
 
-    def clone(self):
-        model = copy.deepcopy(self.model)
-        model.eval().requires_grad_(False)
-        return NNAgent(model, self.device, self.stacker.num_frames, softactions=self.softactions)
+class DqnAgent(DqnInferenceAgent):
 
-    def save_model(self, path):
-        self.model.to('cpu')
-        torch.save(self.model, path)
-        self.model.to(self.device)
-
-    @classmethod
-    def load_model(cls, path, device, ucb=False, greedy=False):
-        path = Path(path)
-        try:
-            with open(path.parent / f'{path.stem}.json', 'r') as f:
-                config = json.load(f)
-        except FileNotFoundError:
-            config = None
-
-        if config is None:
-            with open(path.parent / 'config.json', 'r') as f:
-                config = json.load(f)
-
-        model = torch.load(path, map_location=device)
-        model.eval().requires_grad_(False)
-        agent = cls(model, device, frame_stacks=config['frame_stacks'], softactions=config.get('softactions', False), crps=config.get('crps', False))
-        agent.ucb = ucb
-        agent.greedy = greedy
-        return agent
-
-    @classmethod
-    def load_lilith_weak(cls, device):
-        path = Path('baselines') / 'lilith_weak.pt'
-        return cls.load_model(path, device)
-
-class DqnAgent(NNAgent):
-
-    def __init__(self, model, optimizer, num_actions, device, frame_stacks=1, epsilon_decay=EpsilonDecay(constant_eps=0.1), gamma=0.99, target_update_frequency=1000, no_double=False, scheduler=None, softactions=False, crps=False, crps_explore=False):
-        super().__init__(model, device, frame_stacks, softactions=softactions, crps=crps)
+    def __init__(self, model, optimizer, num_actions, device, frame_stacks=None, epsilon_decay=None, gamma=None, target_update_frequency=None, double_q=False, scheduler=None, softactions=None, loss=None, phi=None):
+        super().__init__(model, device, frame_stacks, softactions=softactions, loss=loss, phi=phi)
         self.target_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.num_actions = num_actions
-        self.epsilon_decay = epsilon_decay
-        self.gamma = gamma
-        self.target_update_frequency = target_update_frequency
-        self.num_updates = 0
-        self.no_double = no_double
+        self.epsilon_decay = epsilon_decay if epsilon_decay is not None else EpsilonDecay(constant_eps=0.0)
+        self.gamma = gamma if gamma is not None else 0.99
+        self.target_update_frequency = target_update_frequency if target_update_frequency is not None else 1000
+        self.no_double = not double_q if double_q is not None else True
         self.scheduler = scheduler
-        self.crps_explore = crps_explore
+        self.loss = loss
 
+        self.num_updates = 0
         self.target_model.requires_grad_(False)
         self.target_model.eval()
 
-    def select_action(self, state, frame_idx=None):
-        if frame_idx is not None:
-            epsilon = self.epsilon_decay(frame_idx)
-        else:
-            epsilon = 0.0
+    def select_action(self, state, frame_idx=None, train=False):
+        if not train:
+            return super().select_action(state, frame_idx, train=False)
 
-        if self.crps and self.crps_explore:
-            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            combined = self.model(state).squeeze(0)
-            mean, std_log = combined.chunk(2)
-            std = torch.exp(std_log)
-            Qs = mean + (2*epsilon - 1)*std # interpolate between LCB and UCB
-            return Qs.argmax().item()
-
+        epsilon = 0.0 if frame_idx is None else self.epsilon_decay(frame_idx)
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
         else:
@@ -155,6 +111,86 @@ class DqnAgent(NNAgent):
 
         return loss.item(), elementwise_loss.detach()
 
+
+    def _td_loss(self, state, action, reward, next_state, done):
+        action = action.unsqueeze(1)  # B x 1
+        
+        next_q_value = self.target_model(next_state)
+        if self.no_double:
+            best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+        else:
+            best_action = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
+        
+        next_value_f = next_q_value.gather(1, best_action) # B x 1
+        next_value_f = next_value_f.squeeze(1).detach() # B
+        
+        mask = 1 - done # B
+        target = (reward + self.gamma * next_value_f * mask)
+
+        cur_q_value = self.model(state).gather(1, action) # B x 1
+        cur_q_value = cur_q_value.squeeze(1) # B
+        loss = F.smooth_l1_loss(cur_q_value, target, reduction="none")
+        return loss
+
+    def _ndqn_loss(self, state, action, reward, next_state, done):
+        action = action.unsqueeze(1)  # B x 1
+        
+        next_q_value, next_std = self.target_model(next_state).chunk(2, dim=1) # B x D
+        next_std = crps.positive_std(next_std)
+        if self.no_double:
+            best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
+        else:
+            next_q_prime = self.model(next_state).chunk(2, dim=1)[0] # B x D
+            best_action = next_q_prime.argmax(dim=1, keepdim=True) # B x 1
+        
+        next_val_dist_mean = next_q_value.gather(1, best_action).squeeze(1) 
+        next_val_dist_std = next_std.gather(1, best_action).squeeze(1)
+        next_val_dist_std = crps.positive_std(next_val_dist_std)
+
+        mu_1 = self.gamma * next_val_dist_mean + reward # B
+        sigma_1 = self.gamma * next_val_dist_std
+
+        # terminal states:
+        done = done.bool()
+        mu_1[done] = reward[done]
+        sigma_1[done] = 0.1
+
+        cur_q_value, cur_std = self.model(state).chunk(2, dim=1) # B x D
+        cur_std = crps.positive_std(cur_std)
+        mu_2 = cur_q_value.gather(1, action).squeeze(1) # B
+        sigma_2 = cur_std.gather(1, action).squeeze(1) # B
+        loss =  crps.normal_kl_div(mu_1.detach(), sigma_1.detach(), mu_2, sigma_2)
+        return loss
+
+
+    def _crps_loss(self, state, action, reward, next_state, done):
+        action = action.unsqueeze(1)  # B x 1
+        
+        # CRPS for reward
+        mu_cur, std_cur, mu_reward, std_reward = self.model(state).chunk(4, dim=1) # B x D
+        mu_cur = mu_cur.gather(1, action).squeeze(1) # B
+        std_cur = crps.positive_std(std_cur.gather(1, action).squeeze(1)) # B
+        mu_reward  = mu_reward.gather(1, action).squeeze(1) # B
+        std_reward = crps.positive_std(std_reward.gather(1, action).squeeze(1)) # B
+        reward_loss = crps.crps_loss(reward, mu_reward, std_reward)
+
+        # KL-div to train Q
+        mu_next, std_next, _, _ = self.target_model(next_state).chunk(4, dim=1) # B x D
+        std_next = crps.positive_std(std_next)
+        best_action = mu_next.argmax(dim=1, keepdim=True) # B x 1
+        mu_next_value, std_next_value = mu_next.gather(1, best_action).squeeze(1), std_next.gather(1, best_action).squeeze(1) # B
+
+        _,_, mu_reward_target, std_reward_target  = self.target_model(state).chunk(4, dim=1) # B x D
+        std_reward_target = crps.positive_std(std_reward_target)
+        mu_reward_target = mu_reward_target.gather(1, action).squeeze(1) # B
+        std_reward_target = std_reward_target.gather(1, action).squeeze(1) # B
+
+        target_mu = mu_reward_target + (1-done) * self.gamma * mu_next_value
+        target_std = std_reward_target + (1-done) * self.gamma * std_next_value
+        q_loss = crps.normal_kl_div(target_mu.detach(), target_std.detach(), mu_cur, std_cur)
+        
+        return reward_loss + q_loss
+
     def compute_loss(self, samples):
         state = samples['obs']
         next_state = samples['next_obs']
@@ -162,49 +198,14 @@ class DqnAgent(NNAgent):
         reward = samples['rews']
         done = samples['done']
 
-        action = action.unsqueeze(1)  # B x 1
-
-        if not self.crps:
-            next_q_value = self.target_model(next_state)
-            if self.no_double:
-                best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
-            else:
-                best_action = self.model(next_state).argmax(dim=1, keepdim=True) # B x 1
-            
-            next_value_f = next_q_value.gather(1, best_action) # B x 1
-            next_value_f = next_value_f.squeeze(1).detach() # B
-            
-            mask = 1 - done # B
-            target = (reward + self.gamma * next_value_f * mask)
-
-            cur_q_value = self.model(state).gather(1, action) # B x 1
-            cur_q_value = cur_q_value.squeeze(1) # B
-            loss = F.smooth_l1_loss(cur_q_value, target, reduction="none")
+        if self.loss == 'td':
+            return self._td_loss(state, action, reward, next_state, done)
+        elif self.loss == 'ndqn':
+            return self._ndqn_loss(state, action, reward, next_state, done)
+        elif self.loss == 'crps':
+            return self._crps_loss(state, action, reward, next_state, done)
         else:
-            next_q_value, next_std_log = self.target_model(next_state).chunk(2, dim=1) # B x D
-            if self.no_double:
-                best_action = next_q_value.argmax(dim=1, keepdim=True) # B x 1
-            else:
-                next_q_prime = self.model(next_state).chunk(2, dim=1)[0] # B x D
-                best_action = next_q_prime.argmax(dim=1, keepdim=True) # B x 1
-            
-            next_val_dist_mean = next_q_value.gather(1, best_action).squeeze(1) 
-            next_val_dist_std_log = next_std_log.gather(1, best_action).squeeze(1)
-            
-            gamma_next_val_dist_mean = self.gamma * next_val_dist_mean + reward # B
-            gamma_next_val_dist_std_log = next_val_dist_std_log + math.log(self.gamma) # B
-
-            # done flag:
-            done = done.bool()
-            gamma_next_val_dist_mean[done] = reward[done]
-            gamma_next_val_dist_std_log[done] = -2.0 # std=0.01
-
-            cur_q_value, cur_std_log = self.model(state).chunk(2, dim=1) # B x D
-            cur_q_value = cur_q_value.gather(1, action).squeeze(1) # B
-            cur_std_log = cur_std_log.gather(1, action).squeeze(1) # B
-            loss = (1/400) * normal_kullback_div(cur_q_value, cur_std_log, gamma_next_val_dist_mean.detach(), gamma_next_val_dist_std_log.detach())
-        
-        return loss
+            raise ValueError(f"Unknown loss: {self.loss}")
 
 
 class DqnTrainer:
@@ -228,8 +229,7 @@ class DqnTrainer:
         self.tournament = HockeyTournamentEvaluation()
         self.tournament.add_agent('self', self.agent)
         self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
-        self.tournament.add_agent('stenz', NNAgent.load_stenz_weak(self.device))
-
+        
     def reset_env(self):
         self.stacker.clear()
         state, info = self.env.reset()
@@ -303,28 +303,19 @@ class DqnTrainer:
         return NNAgent(model, self.device, self.agent.stacker.num_frames)
 
     def _schedule_opponents(self, frame_idx):
-        if self.schedule == 'lilith':
+        if self.schedule == 'basic':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
-            if frame_idx >= 1_500_000 and frame_idx % 100_000 == 0:
+            if frame_idx >= 1_500_000 and frame_idx % 500_000 == 0:
                 agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=5, rolling=5)
-        elif self.schedule == 'basic':
-            if frame_idx == 500_000:
-                self.env.add_basic_opponent(weak=False)
-            if frame_idx == 2_500_000:
-                agent = NNAgent.load_lilith_weak(self.device)
-                self.env.add_opponent('lilith_weak', agent, prob=5)
-            if frame_idx >= 3_000_000 and frame_idx % 500_000 == 0:
-                agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=5, rolling=3)
+                self.env.add_opponent('self', agent, prob=1, rolling=3)
         elif self.schedule == 'adv1':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
         elif self.schedule == 'self-play':
             if frame_idx % 500_000 == 0:
                 agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=5, rolling=3)
+                self.env.add_opponent('self', agent, prob=1, rolling=3)
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
@@ -365,7 +356,7 @@ class DqnTrainer:
         self.agent.model.train()
 
     def checkpoint(self, frame_idx):
-        self.update_elo(frame_idx)
+        #self.update_elo(frame_idx)
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(self.model_dir / f'{name}.pt')
 

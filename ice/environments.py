@@ -59,7 +59,7 @@ class IcyHockey(HockeyEnv):
             prob = 1.0 if prob is None else prob
             self.add_opponent('basic_weak', BasicOpponent(weak=True), prob)
         else:
-            prob = 4.0 if prob is None else prob
+            prob = 1.0 if prob is None else prob
             self.add_opponent('basic_strong', BasicOpponent(weak=False), prob)
 
     def remove_opponent(self, name):

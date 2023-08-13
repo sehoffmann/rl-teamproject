@@ -16,8 +16,11 @@ from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 MODELS = ['lilith', 'lilith_big', 'baseline1', 'baseline1_layernorm', 'baseline1_ln_big', 'LSTM-small', 'LSTM-big']
 
 def create_model(config, num_actions, obs_shape):
-    if config['crps']:
+    if config['loss'] == 'ndqn':
         num_actions *= 2 # predict both mean and std
+
+    if config['loss'] == 'crps':
+        num_actions *= 4 # predict value and reward distribution
 
     cp_path = config['checkpoint']
     if cp_path:
@@ -128,11 +131,11 @@ def train(config, model_dir, device):
         frame_stacks=config['frame_stacks'],
         epsilon_decay=epsilon_decay, 
         gamma=config['gamma']**config['nsteps'],
-        no_double=not config['double_q'],
+        double_q=config['double_q'],
         scheduler=scheduler,
         softactions=config['softactions'],
-        crps=config['crps'],
-        crps_explore=config['crps_explore'],
+        loss=config['loss'],
+        phi=config['phi'],
     )
 
     assert config['warmup_frames'] >= config['bootstrap_frames']
@@ -175,6 +178,7 @@ def init_wandb(config, args):
 
 def make_config(args):
     config = {
+        'class': 'DQN',
         'frames': args.frames,
         'name': args.name,
         'checkpoint': args.checkpoint,
@@ -197,8 +201,9 @@ def make_config(args):
         'bootstrap_frames': args.bootstrap_frames,
         'rampup': args.rampup,
         'softactions': args.softactions,
-        'crps': args.crps,
-        'crps_explore': args.crps,
+        'loss': args.loss,
+        'phi': args.phi,
+        'min_std': args.min_std,
         'reward_shaping': not args.no_shaping,
     }
     return config
@@ -252,10 +257,11 @@ def main():
     parser.add_argument('--rampup', type=int, default=0)
     parser.add_argument('--bootstrap-frames', type=int, default=0)
     parser.add_argument('--softactions', action='store_true')
-    parser.add_argument('--crps', action='store_true')
-    parser.add_argument('--crps-explore', action='store_true')
+    parser.add_argument('--loss', choices=['td', 'ndqn', 'crps'], type=str, default='td')
+    parser.add_argument('--phi', type=float, default=0.0)
+    parser.add_argument('--min-std', type=float, default=0.1)
     parser.add_argument('--no-shaping', action='store_true')
- 
+
     args = parser.parse_args()
 
     ## create config for phase 1 and phase 2
@@ -265,7 +271,6 @@ def main():
         phase1_config = config.copy()
         phase1_config['eps_decay'] = 1_000_000
         phase1_config['frames'] = 2_000_000
-        # phase1_config['frames'] = 100_000
         phase1_config['bootstrap_frames'] = 300_000
         phase1_config['cosine_annealing'] = True
         phase1_config['nsteps'] = 4
@@ -281,7 +286,6 @@ def main():
         phase2_config = config.copy()
         phase2_config['eps_decay'] = 1
         phase2_config['frames'] = 15_000_000
-        # phase2_config['frames'] = 50_000
         phase2_config['name'] += '-phase2'
         phase2_config['schedule'] = 'basic'
         phase2_config['rampup'] = 1_000_000
