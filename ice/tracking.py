@@ -50,6 +50,7 @@ class Tracker:
         self.episode_cum_reward = 0
         self.winner_stats = []
         self.opponent_stats = []
+        self.win_rate_history = []
         self.reset()
     
     def reset(self):
@@ -70,6 +71,7 @@ class Tracker:
         draw_rate = np.mean(winner_stats == 0) * 100
         win_rate = np.mean(winner_stats == 1) * 100
         loss_rate = np.mean(winner_stats == -1) * 100
+        self.win_rate_history += [win_rate]
 
         # Opponent stats
         opponent_stats = np.array(self.opponent_stats)

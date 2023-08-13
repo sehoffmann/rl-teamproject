@@ -15,7 +15,7 @@ import crps
 from agent import NNAgent
 import plotting
 
-TRAINING_SCHEDULES = ['basic', 'adv1', 'adv2', 'self-play'] 
+TRAINING_SCHEDULES = ['basic', 'adv1', 'adv2', 'self-play', 'dynamic'] 
 
 class DqnInferenceAgent(NNAgent):
 
@@ -61,6 +61,20 @@ class DqnInferenceAgent(NNAgent):
             probs = F.softmax(Qs, dim=1).squeeze(0)
             return np.random.choice(len(probs), p=probs.cpu().detach().numpy())
 
+    def copy(self, eval=True):
+        model = copy.deepcopy(self.model)
+        model.requires_grad_(False)
+        if eval:
+            model.eval().requires_grad_(False)
+        return DqnInferenceAgent(
+            model,
+            self.device,
+            frame_stacks=self.stacker.num_frames,
+            loss=self.loss,
+            phi=self.phi,
+            softactions=self.softactions
+        )
+
 class DqnAgent(DqnInferenceAgent):
 
     def __init__(self, model, optimizer, num_actions, device, frame_stacks=None, epsilon_decay=None, gamma=None, target_update_frequency=None, double_q=False, scheduler=None, softactions=None, loss=None, phi=None):
@@ -87,7 +101,7 @@ class DqnAgent(DqnInferenceAgent):
         if epsilon > 0.0 and epsilon > np.random.random():
             action = np.random.randint(self.num_actions)
         else:
-            action = super().select_action(state, frame_idx)
+            action = super().select_action(state, frame_idx, train=True)
 
         return action
 
@@ -153,7 +167,7 @@ class DqnAgent(DqnInferenceAgent):
         # terminal states:
         done = done.bool()
         mu_1[done] = reward[done]
-        sigma_1[done] = 0.1
+        sigma_1[done] = 0.05
 
         cur_q_value, cur_std = self.model(state).chunk(2, dim=1) # B x D
         cur_std = crps.positive_std(cur_std)
@@ -225,6 +239,7 @@ class DqnTrainer:
 
         self.stacker = FrameStacker(frame_stacks)        
         self.tracker = Tracker()
+        self.last_update = 0
 
         self.tournament = HockeyTournamentEvaluation()
         self.tournament.add_agent('self', self.agent)
@@ -244,10 +259,10 @@ class DqnTrainer:
         print('Prepopulating replay buffer...')
         self.stacker.clear()
         state, _ = self.env.reset()
-        self.env.add_opponent('TEMP-AGENT', agent.clone(), prob=4)
+        self.env.add_opponent('TEMP-AGENT', agent.copy(), prob=4)
         state_self = self.stacker.append_and_stack(state)
         for frame_idx in range(1, num_frames + 1):
-            action = agent.select_action(state)
+            action = agent.select_action(state, train=False)
             next_state, reward, done, _, info = self.env.step(action)
             next_state_self = self.stacker.append_and_stack(next_state)
             self.replay_buffer.store(state_self, action, reward, next_state_self, done)
@@ -263,7 +278,7 @@ class DqnTrainer:
         print('Warming up...')
         state = self.reset_env()
         for idx in range(self.training_delay):
-            action = self.agent.select_action(state, 1)
+            action = self.agent.select_action(state, 1, train=False)
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
             state = next_state
@@ -275,7 +290,7 @@ class DqnTrainer:
         state = self.reset_env()
         for frame_idx in range(1, num_frames + 1):
             self._schedule_opponents(frame_idx)
-            action = self.agent.select_action(state, frame_idx)
+            action = self.agent.select_action(state, frame_idx, train=True)
             next_state, reward, done, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
             state = next_state
@@ -297,25 +312,36 @@ class DqnTrainer:
 
         self.env.close()
 
-    def _copy_agent(self):
-        model = copy.deepcopy(self.agent.model)
-        model.eval().requires_grad_(False)
-        return NNAgent(model, self.device, self.agent.stacker.num_frames)
+    def _add_self(self, frame_idx, p_total=1, rolling=3):
+        p = p_total / rolling
+        agent = self.agent.copy()
+        self.env.add_opponent('self', agent, prob=p, rolling=rolling)
+        print(f'!! Added new self-play copy. Frame: {frame_idx} !!')
 
     def _schedule_opponents(self, frame_idx):
         if self.schedule == 'basic':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
             if frame_idx >= 1_500_000 and frame_idx % 500_000 == 0:
-                agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=1, rolling=3)
+                self._add_self(frame_idx, p_total=3, rolling=3)
         elif self.schedule == 'adv1':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
         elif self.schedule == 'self-play':
             if frame_idx % 500_000 == 0:
-                agent = self._copy_agent()
-                self.env.add_opponent('self', agent, prob=1, rolling=3)
+                self._add_self(frame_idx, p_total=3, rolling=3)
+        elif self.schedule == 'dynamic':
+            if frame_idx < 100_000 or len(self.tracker.win_rate_history) < 10:
+                return
+            
+            if frame_idx - self.last_update < 200_000:
+                return
+            
+            win_rate = np.mean(self.tracker.win_rate_history[-10:])
+            if win_rate > 70.0:
+                self._add_self(frame_idx, p_total=3, rolling=3)
+                self.last_update = frame_idx
+
         else:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)

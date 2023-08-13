@@ -23,10 +23,12 @@ class NNAgent:
         action_discrete = self.select_action(state, train=False)
         return self.ENV.discrete_to_continous_action(action_discrete)
 
-    def clone(self):
+    def copy(self, eval=True):
         model = copy.deepcopy(self.model)
-        model.eval().requires_grad_(False)
-        return NNAgent(model, self.device, self.stacker.num_frames, softactions=self.softactions)
+        model.requires_grad_(False)
+        if eval:
+            model.eval().requires_grad_(False)
+        return NNAgent(model, self.device, self.stacker.num_frames)
 
     def save_model(self, path):
         self.model.to('cpu')
