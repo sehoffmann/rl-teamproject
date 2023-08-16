@@ -23,7 +23,7 @@ class Agent(ABC):
 class EloLeaderboard(dict):
     """Ideas based on https://en.wikipedia.org/wiki/Elo_rating_system"""
 
-    def __init__(self, start_elo=1000, max_k=60, min_k=10,  default_elos=True):
+    def __init__(self, start_elo=1000, max_k=100, min_k=40,  default_elos=True):
         self.start_elo = start_elo
         self.max_k = max_k
         self.min_k = min_k
@@ -52,7 +52,7 @@ class EloLeaderboard(dict):
         del self.elos[key]
         del self.histories[key]
 
-    def mean_elos(self, n=10):
+    def mean_elos(self, n=20):
         return {k: np.mean(v[-n:]) for k, v in self.histories.items()}
 
     def add_agent(self, agent, elo=None, num_games=0):
@@ -76,7 +76,7 @@ class EloLeaderboard(dict):
         new_b = self[agent_b] + K_b * (result_b - expect_b)
         return new_a, new_b
 
-    def update_rating(self, agent_a, agent_b, result):
+    def update_rating(self, agent_a, agent_b, result, update_opponent=True):
         """Register the result of the pairing. 
         0 = lost,
         1 = won,
@@ -86,10 +86,14 @@ class EloLeaderboard(dict):
         a draw: (0.5, 0.5)
         """
         self.histories[agent_a].append(self[agent_a])
-        self.histories[agent_b].append(self[agent_b])
-        self[agent_a], self[agent_b] = self.calculate_new_elos(agent_a, agent_b, result)
+        self[agent_a], new_elo_b = self.calculate_new_elos(agent_a, agent_b, result)
         self.num_games[agent_a] = self.num_games.get(agent_a, 0) + 1
-        self.num_games[agent_b] = self.num_games.get(agent_b, 0) + 1
+        
+        if update_opponent:
+            self.histories[agent_b].append(self[agent_b])
+            self[agent_b] = new_elo_b
+            self.num_games[agent_b] = self.num_games.get(agent_b, 0) + 1
+        
         return self[agent_a], self[agent_b]
 
     def load_default_ratings(self):
@@ -186,29 +190,32 @@ class HockeyTournamentEvaluation():
         if num_games > 0:
             self.evaluate_agent(name, n_games=num_games)
     
-    def get_pairing(self, name):
-        alpha = 0.5 # softness factor
-        eps = 20
+    def get_pairing(self, name, opponents=None, alpha=0.5, eps=20):
         elo = self.leaderboard[name]
-        
+        agents = list(opponents) if opponents is not None else list(self.agents)
+        try:
+            own_idx = agents.index(name)
+        except ValueError:
+            own_idx = -1
+
         while True:
-            sample_weights = [1/(eps + (np.abs(elo - self.leaderboard[name]))**alpha) for name in self.agents]        
-            own_idx = np.argmax(np.array(self.agents) == name)
-            sample_weights[own_idx] = 0.0
+            sample_weights = [1/(eps + (np.abs(elo - self.leaderboard[name]))**alpha) for name in agents]        
+            if own_idx != -1:
+                sample_weights[own_idx] = 0.0
             sample_weights = np.array(sample_weights) / sum(sample_weights)
-            opponent_idx = np.random.choice(len(self.agents), size=1, p=sample_weights)[0]
+            opponent_idx = np.random.choice(len(agents), p=sample_weights)
             if opponent_idx != own_idx:
                 break
-        opponent = list(self.agents.keys())[opponent_idx]
+        opponent = agents[opponent_idx]
         return (name, opponent)
     
-    def random_plays(self, n_plays=10, verbose=False):
-        names = list(self.agents.keys())
+    def random_plays(self, n_plays=10, agents=None, opponents=None, update_opponents=True, verbose=False):
+        names = list(agents) if agents is not None else list(self.agents.keys())
         for _ in range(n_plays):
             name1 = np.random.choice(names)
-            _, name2 = self.get_pairing(name1) 
+            _, name2 = self.get_pairing(name1, opponents) 
             _, _, res = play_game(self[name1], self[name2])
-            new_elo1, new_elo2 = self.leaderboard.update_rating(name1, name2, result=res)
+            new_elo1, new_elo2 = self.leaderboard.update_rating(name1, name2, result=res, update_opponent=update_opponents)
             if verbose:
                 print(f'{name1} ({new_elo1:.1f}) vs {name2} ({new_elo2:.1f}): {res}')
             yield self.leaderboard.elos.copy()

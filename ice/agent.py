@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import torch
+import numpy as np
 
 from environments import IcyHockey
 from replay_buffer import FrameStacker
@@ -64,3 +65,28 @@ class NNAgent:
     def load_lilith_weak(cls, device):
         path = Path('baselines') / 'lilith_weak.pt'
         return cls.load_model(path, device)
+
+
+class MajorityVoteAgent:
+    ENV = IcyHockey()
+
+    def __init__(self, agents):
+        self.agents = agents
+
+    def act(self, obs):
+        action_discrete = self.select_action(obs)
+        return self.ENV.discrete_to_continous_action(action_discrete)
+
+    def select_action(self, obs):
+        votes = []
+        for agent in self.agents:
+            state = agent.stacker.append_and_stack(obs)
+            action_discrete = agent.select_action(state)
+            votes.append(action_discrete)
+        action, counts = np.unique(votes, return_counts=True)
+        return action[np.argmax(counts)]
+
+    def reset(self):
+        for agent in self.agents:
+            if hasattr(agent, 'reset'):
+                agent.reset()

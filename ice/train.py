@@ -122,7 +122,11 @@ def train(config, model_dir, device):
             schedulers.append(scheduler)
         scheduler = torch.optim.lr_scheduler.ChainedScheduler(schedulers)
 
-    epsilon_decay = EpsilonDecay(num_frames=config['eps_decay'])
+    epsilon_decay = EpsilonDecay(
+        start_eps=config['start_eps'],
+        min_eps=config['min_eps'],
+        num_frames=config['eps_decay'],
+    )
     dqn_agent = DqnAgent(
         model, 
         optimizer, 
@@ -205,6 +209,8 @@ def make_config(args):
         'phi': args.phi,
         'min_std': args.min_std,
         'reward_shaping': not args.no_shaping,
+        'start_eps': args.start_eps,
+        'min_eps': args.min_eps,
     }
     return config
 
@@ -261,6 +267,8 @@ def main():
     parser.add_argument('--phi', type=float, default=0.0)
     parser.add_argument('--min-std', type=float, default=0.1)
     parser.add_argument('--no-shaping', action='store_true')
+    parser.add_argument('--start-eps', type=float, default=1.0)
+    parser.add_argument('--min-eps', type=float, default=0.1)
 
     args = parser.parse_args()
 
