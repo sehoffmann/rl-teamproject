@@ -385,8 +385,6 @@ class DqnTrainer:
         #self.update_elo(frame_idx)
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(self.model_dir / f'{name}.pt')
-
+        
         images = self.rollout(4)
-        images = [game_imgs + [game_imgs[-1]]*30  for game_imgs in images] # repeat last frame
-        images = itertools.chain.from_iterable(images)
-        plotting.save_gif(self.model_dir / f'{name}.gif', images)
+        plotting.save_games(self.model_dir / f'{name}.gif', images)

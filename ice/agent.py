@@ -90,3 +90,8 @@ class MajorityVoteAgent:
         for agent in self.agents:
             if hasattr(agent, 'reset'):
                 agent.reset()
+
+
+    def copy(self, eval=True):
+        agents = [agent.copy(eval) for agent in self.agents]
+        return MajorityVoteAgent(agents)

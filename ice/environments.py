@@ -75,10 +75,14 @@ class IcyHockey(HockeyEnv):
         agent = self.opponents[name].agent
         return name, agent
 
-    def reset(self, *args, **kwargs):
-        self.cur_opp_name, self.cur_opp_agent = self.sample_opponent()
+    def reset(self, opponent=None):
+        if opponent is None:
+            self.cur_opp_name, self.cur_opp_agent = self.sample_opponent()
+        else:
+            self.cur_opp_name, self.cur_opp_agent = 'user', opponent
+
         if hasattr(self.cur_opp_agent, 'reset'):
-            self.cur_opp_agent.reset()
+            self.cur_opp_agent.reset() 
         obs, info = super().reset()
         self._augment_info(info)
         return obs, info
@@ -96,6 +100,22 @@ class IcyHockey(HockeyEnv):
 
         return obs, reward, done, _, info
     
+    def rollout(self, agent, opponent=None, num_games=1):
+        game_imgs = []
+        for _ in range(num_games):
+            if hasattr(agent, 'reset'):
+                agent.reset()
+            state, _ = self.reset(opponent=opponent)
+            imgs = [self.render(mode='rgb_array')]
+            while True:
+                action = agent.select_action(state)
+                state, _, done, _, _ = self.step(action)
+                imgs.append(self.render(mode='rgb_array'))
+                if done:
+                    break
+            game_imgs.append(imgs)
+        return game_imgs
+
     def _augment_info(self, info):
         info['opponent'] = self.cur_opp_name
         return info
