@@ -3,6 +3,8 @@ import numpy as np
 
 from laserhockey.hockey_env import HockeyEnv, BasicOpponent
 import gymnasium.spaces as spaces
+import gymnasium as gym 
+from stable_baselines3.common.preprocessing import is_image_space_channels_first, maybe_transpose, preprocess_obs
 
 
 class Opponent:
@@ -46,6 +48,7 @@ class IcyHockey(HockeyEnv):
         super().__init__(mode=mode, keep_mode=True)
         self.action_space = spaces.Discrete(self.N_DISCRETE_ACTIONS)
 
+
     def add_opponent(self, name, agent, prob, rolling=1):
         if rolling > 1:
             if name not in self.opponents:
@@ -53,6 +56,7 @@ class IcyHockey(HockeyEnv):
             self.opponents[name].add_opponent(agent, prob)
         else:
             self.opponents[name] = Opponent(agent, prob)
+
 
     def add_basic_opponent(self, weak, prob=None):
         if weak:
@@ -62,11 +66,14 @@ class IcyHockey(HockeyEnv):
             prob = 1.0 if prob is None else prob
             self.add_opponent('basic_strong', BasicOpponent(weak=False), prob)
 
+
     def remove_opponent(self, name):
         del self.opponents[name]
 
+
     def has_opponent(self, name):
         return name in self.opponents
+
 
     def sample_opponent(self):
         probs = np.array([opp.prob for opp in self.opponents.values()], dtype=np.float64)
@@ -74,6 +81,7 @@ class IcyHockey(HockeyEnv):
         name = np.random.choice(list(self.opponents.keys()), p=probs)
         agent = self.opponents[name].agent
         return name, agent
+
 
     def reset(self, opponent=None):
         if opponent is None:
@@ -87,6 +95,7 @@ class IcyHockey(HockeyEnv):
         self._augment_info(info)
         return obs, info
 
+
     def step(self, action):
         a1 = self.discrete_to_continous_action(action)
         ob2 = self.obs_agent_two()
@@ -99,7 +108,8 @@ class IcyHockey(HockeyEnv):
             reward = info['winner'] * 10
 
         return obs, reward, done, _, info
-    
+
+
     def rollout(self, agent, opponent=None, num_games=1):
         game_imgs = []
         for _ in range(num_games):
@@ -116,6 +126,49 @@ class IcyHockey(HockeyEnv):
             game_imgs.append(imgs)
         return game_imgs
 
+
     def _augment_info(self, info):
         info['opponent'] = self.cur_opp_name
         return info
+
+
+class ChannelsFirstWrapper(gym.ObservationWrapper):
+
+    def __init__(self, env):
+        assert isinstance(env.observation_space, spaces.Box), f"Expected Box space, got {env.observation_space}"
+        super().__init__(env)
+
+        self.channels_first = is_image_space_channels_first(env.observation_space)
+        if not self.channels_first:
+            s = env.observation_space.shape
+            self.observation_space = spaces.Box(
+                low=env.observation_space.low.transpose(2, 0, 1),
+                high=env.observation_space.high.transpose(2, 0, 1),
+                shape=(s[2], s[0], s[1]),
+                dtype=env.observation_space.dtype,
+                #seed=env.observation_space.seed,
+            )
+            print(self.observation_space)
+
+
+    def observation(self, obs):
+        if not self.channels_first:
+            return obs.transpose(2, 0, 1)
+        else:
+            return obs
+
+
+
+class PreprocessWrapper(gym.ObservationWrapper):
+
+    def __init__(self, env, normalize_images=True):
+        super().__init__(env)
+
+        self.normalize_images = normalize_images
+
+
+    def observation(self, obs):
+        if self.normalize_images:
+            obs = obs.astype(np.float32) / 255.0
+        return obs
+        

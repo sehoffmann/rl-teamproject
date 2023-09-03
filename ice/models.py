@@ -158,3 +158,37 @@ class LSTM(nn.Module):
             value = self.value_projection(value[:, -1, :]) # B x out_dim
             Q = value + adv - adv.mean(dim=1, keepdim=True)
         return Q
+
+    
+class NatureCNN(nn.Module):
+
+    def __init__(
+            self,
+            obs_space,
+            out_dim: int,
+    ):
+        super().__init__()
+
+        in_dim = obs_space.shape[0]
+        self.feature_layer = nn.Sequential(
+            nn.Conv2d(in_dim, 32, 8, stride=4, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=0),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+
+        with torch.no_grad():
+            inp  = torch.as_tensor(obs_space.sample()[None], dtype=torch.float32)
+            n_flatten = self.feature_layer(inp).shape[1]
+
+        self.linear = nn.Linear(n_flatten, out_dim)
+
+
+    def forward(self, x):
+        # x has shape B x C x H x W
+        x = self.feature_layer(x)
+        x = self.linear(x)
+        return x

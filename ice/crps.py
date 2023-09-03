@@ -30,8 +30,8 @@ def normal_kl_div(mu_1, sigma_1, mu_2, sigma_2, reduction=None):
     loss = torch.log(sigma_2/sigma_1) + (sigma_1.pow(2) + l2) / (2 * sigma_2.pow(2)) - 0.5
     i = loss.argmax(dim=0)
     max_loss = loss[i]
-    if max_loss.item() > 10:
-        print(f"KL: {max_loss.item()}, mu_1: {mu_1[i].item()}, mu_2: {mu_2[i].item()}, sigma_1: {sigma_1[i].item()}, sigma_2: {sigma_2[i].item()}")
+    #if max_loss.item() > 10:
+    #    print(f"KL: {max_loss.item()}, mu_1: {mu_1[i].item()}, mu_2: {mu_2[i].item()}, sigma_1: {sigma_1[i].item()}, sigma_2: {sigma_2[i].item()}")
     loss = reduce(loss, reduction)
     return loss
 

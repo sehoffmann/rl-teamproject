@@ -7,15 +7,29 @@ from pprint import pprint
 import json
 from pathlib import Path
 
+import gymnasium as gym
+from stable_baselines3.common.env_util import make_atari_env
+from stable_baselines3.common.vec_env import VecFrameStack
+from stable_baselines3.common.atari_wrappers import AtariWrapper
+
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from environments import IcyHockey
-from models import Lilith, Baseline1, LSTM
+from environments import IcyHockey, ChannelsFirstWrapper, PreprocessWrapper
+from models import Lilith, Baseline1, LSTM, NatureCNN
 from decay import EpsilonDecay
 from dqn import NNAgent, DqnAgent, DqnTrainer, TRAINING_SCHEDULES
 
-MODELS = ['lilith', 'lilith_big', 'baseline1', 'baseline1_layernorm', 'baseline1_ln_big', 'LSTM-small', 'LSTM-big']
+MODELS = [
+    'lilith', 
+    'lilith_big', 
+    'baseline1', 
+    'baseline1_layernorm', 
+    'baseline1_ln_big', 
+    'LSTM-small', 
+    'LSTM-big',
+    'nature-cnn',
+]
 
-def create_model(config, num_actions, obs_shape):
+def create_model(config, num_actions, obs_shape, obs_space):
     if config['loss'] == 'ndqn':
         num_actions *= 2 # predict both mean and std
 
@@ -88,18 +102,45 @@ def create_model(config, num_actions, obs_shape):
             dueling=config['dueling'],
         )
         return model
+    elif config['model'] == 'nature-cnn':
+        model = NatureCNN(
+            obs_space,
+            num_actions,
+        )
+        return model
+
+
+def create_environment(config):
+    if config['env'] == 'IcyHockey-v0':
+        env = IcyHockey(reward_shaping=config['reward_shaping'])
+    else:
+        #env = make_atari_env(config['env'], n_envs=1)
+        env = gym.make(config['env'])
+        env = AtariWrapper(env)
+        env = PreprocessWrapper(env)
+
+    if len(env.observation_space.shape) == 3:
+        print('wrap')
+        env = ChannelsFirstWrapper(env)
+
+    return env
+    
 
 def train(config, model_dir, device):
-    ## ENV
-    env = IcyHockey(reward_shaping=config['reward_shaping'])
+    env = create_environment(config)
 
+    if config['frame_stacks'] > 1:
+        env = VecFrameStack(env, config['frame_stacks'])
+
+    
+    print(env.observation_space)
+    
     # Replay Buffer
-    obs_shape = [config['frame_stacks'], env.observation_space.shape[0]]
     if not config['priority_rp']:
-        replay_buffer = ReplayBuffer(obs_shape, config['buffer_size'], config['batch_size'], n_step=config['nsteps'])
+        replay_buffer = ReplayBuffer(env.observation_space.shape, config['buffer_size'], config['batch_size'], n_step=config['nsteps'])
     else:
         replay_buffer = PrioritizedReplayBuffer(
-            obs_shape, 
+            env.observation_space.shape, 
             config['buffer_size'], 
             config['batch_size'], 
             n_step = config['nsteps'],
@@ -108,7 +149,7 @@ def train(config, model_dir, device):
         )
 
     # Model & DQN Agent
-    model = create_model(config, env.action_space.n, obs_shape).to(device)
+    model = create_model(config, env.action_space.n, env.observation_space.shape, env.observation_space).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr']) #
     if config['cosine_annealing']:
         scheduler =torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config['frames'], 1e-6)
@@ -147,7 +188,7 @@ def train(config, model_dir, device):
     # Trainer
     trainer = DqnTrainer(
         model_dir,
-        env, 
+        env,
         dqn_agent, 
         replay_buffer, 
         device,
@@ -180,9 +221,11 @@ def init_wandb(config, args):
     wandb.init(project='ice', name=wandb_name, mode=wandb_mode, reinit=True)
     wandb.config.update(config)
 
+
 def make_config(args):
     config = {
         'class': 'DQN',
+        'env': args.env,
         'frames': args.frames,
         'name': args.name,
         'checkpoint': args.checkpoint,
@@ -214,8 +257,8 @@ def make_config(args):
     }
     return config
 
-def run(config):
 
+def run(config):
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
@@ -230,6 +273,7 @@ def run(config):
 
     return model_dir
 
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -239,6 +283,7 @@ def main():
     parser.add_argument('--checkpoint', type=str)
     parser.add_argument('--no-wandb', action='store_true')
     parser.add_argument('--preset', type=str, default=0)
+    parser.add_argument('-e', '--env', type=str, default='IcyHockey-v0')
 
     # Other
     parser.add_argument('--lr', type=float, default=1e-4)

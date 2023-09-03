@@ -61,6 +61,7 @@ class DqnInferenceAgent(NNAgent):
             probs = F.softmax(Qs, dim=1).squeeze(0)
             return np.random.choice(len(probs), p=probs.cpu().detach().numpy())
 
+
     def copy(self, eval=True):
         model = copy.deepcopy(self.model)
         model.requires_grad_(False)
@@ -93,6 +94,7 @@ class DqnAgent(DqnInferenceAgent):
         self.target_model.requires_grad_(False)
         self.target_model.eval()
 
+
     def select_action(self, state, frame_idx=None, train=False):
         if not train:
             return super().select_action(state, frame_idx, train=False)
@@ -104,6 +106,7 @@ class DqnAgent(DqnInferenceAgent):
             action = super().select_action(state, frame_idx, train=True)
 
         return action
+
 
     def update_model(self, samples, frame_idx=None):
         elementwise_loss = self.compute_loss(samples)
@@ -145,6 +148,7 @@ class DqnAgent(DqnInferenceAgent):
         cur_q_value = cur_q_value.squeeze(1) # B
         loss = F.smooth_l1_loss(cur_q_value, target, reduction="none")
         return loss
+
 
     def _ndqn_loss(self, state, action, reward, next_state, done):
         action = action.unsqueeze(1)  # B x 1
@@ -205,6 +209,7 @@ class DqnAgent(DqnInferenceAgent):
         
         return reward_loss + q_loss
 
+
     def compute_loss(self, samples):
         state = samples['obs']
         next_state = samples['next_obs']
@@ -241,37 +246,52 @@ class DqnTrainer:
         self.tracker = Tracker()
         self.last_update = 0
 
-        self.tournament = HockeyTournamentEvaluation()
-        self.tournament.add_agent('self', self.agent)
-        self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
-        
+
+        if False:  # TODO
+            self.tournament = HockeyTournamentEvaluation()
+            self.tournament.add_agent('self', self.agent)
+            self.tournament.add_agent('lilith_weak', NNAgent.load_lilith_weak(self.device))
+
+
     def reset_env(self):
         self.stacker.clear()
         state, info = self.env.reset()
-        return self.stacker.append_and_stack(state)
+        #return self.stacker.append_and_stack(state)
+        return state
+
 
     def step(self, action):
-        next_state, reward, done, _, info = self.env.step(action)
-        next_state = self.stacker.append_and_stack(next_state)
-        return next_state, reward, done, info
+        next_state, reward, done, truncated, info = self.env.step(action)
+        #next_state = self.stacker.append_and_stack(next_state)
+        return next_state, reward, done, truncated, info
+
 
     def prepopulate(self, agent, num_frames: int):
         print('Prepopulating replay buffer...')
         self.stacker.clear()
         state, _ = self.env.reset()
-        self.env.add_opponent('TEMP-AGENT', agent.copy(), prob=4)
-        state_self = self.stacker.append_and_stack(state)
+
+        if False: # TODO
+            self.env.add_opponent('TEMP-AGENT', agent.copy(), prob=4)
+        
+        state_self = state
+        #state_self = self.stacker.append_and_stack(state)
         for frame_idx in range(1, num_frames + 1):
             action = agent.select_action(state, train=False)
-            next_state, reward, done, _, info = self.env.step(action)
-            next_state_self = self.stacker.append_and_stack(next_state)
+            next_state, reward, done, truncated, info = self.env.step(action)
+            #next_state_self = self.stacker.append_and_stack(next_state)
+            next_state_self = next_state
             self.replay_buffer.store(state_self, action, reward, next_state_self, done)
             state = next_state
-            if done:
+            if done or truncated:
                 self.stacker.clear()
                 state, _ = self.env.reset()
-                state_self = self.stacker.append_and_stack(state)
-        self.env.remove_opponent('TEMP-AGENT')
+                #state_self = self.stacker.append_and_stack(state)
+                state_self = state
+
+        if False: # TODO
+            self.env.remove_opponent('TEMP-AGENT')
+
 
     def train(self, num_frames: int):
         # Warmup
@@ -279,8 +299,8 @@ class DqnTrainer:
         state = self.reset_env()
         for idx in range(self.training_delay):
             action = self.agent.select_action(state, 1, train=False)
-            next_state, reward, done, info = self.step(action)
-            self.replay_buffer.store(state, action, reward, next_state, done)
+            next_state, reward, done, truncated, info = self.step(action)
+            self.replay_buffer.store(state, action, reward, next_state, done or truncated)
             state = next_state
             if done:
                 state = self.reset_env()
@@ -291,7 +311,7 @@ class DqnTrainer:
         for frame_idx in range(1, num_frames + 1):
             self._schedule_opponents(frame_idx)
             action = self.agent.select_action(state, frame_idx, train=True)
-            next_state, reward, done, info = self.step(action)
+            next_state, reward, done, truncated, info = self.step(action)
             self.replay_buffer.store(state, action, reward, next_state, done)
             state = next_state
             self.tracker.add_frame(reward)
@@ -300,7 +320,7 @@ class DqnTrainer:
                 self.tracker.log('beta', self.replay_buffer.beta_decay(frame_idx))
 
             # if episode ends
-            if done:
+            if done or truncated:
                 self.tracker.add_game(info)
                 state = self.reset_env()
 
@@ -312,13 +332,18 @@ class DqnTrainer:
 
         self.env.close()
 
+
     def _add_self(self, frame_idx, p_total=1, rolling=3):
         p = p_total / rolling
         agent = self.agent.copy()
         self.env.add_opponent('self', agent, prob=p, rolling=rolling)
         print(f'!! Added new self-play copy. Frame: {frame_idx} !!')
 
+
     def _schedule_opponents(self, frame_idx):
+        if True:
+            return # TODO
+
         if self.schedule == 'basic':
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
@@ -346,12 +371,14 @@ class DqnTrainer:
             if frame_idx == 500_000:
                 self.env.add_basic_opponent(weak=False)
 
+
     def _update(self, frame_idx):
         batch = self.replay_buffer.sample_batch_torch(num_frames=frame_idx, device=self.device)
         loss, sample_losses = self.agent.update_model(batch, frame_idx)
         self.tracker.add_update(loss)
         if isinstance(self.replay_buffer, PrioritizedReplayBuffer):
             self.replay_buffer.update_priorities(batch['indices'], sample_losses.cpu().numpy()) 
+
 
     def rollout(self, num_games: int):
         self.agent.model.eval()
@@ -361,15 +388,16 @@ class DqnTrainer:
             imgs = [self.env.render(mode='rgb_array')]
             while True:
                 action = self.agent.select_action(state)
-                state, _, done, _ = self.step(action)
+                state, _, done, truncated, _ = self.step(action)
                 imgs.append(self.env.render(mode='rgb_array'))
-                if done:
+                if done or truncated:
                     state = self.reset_env()
                     break
             game_imgs.append(imgs)
         self.agent.model.train()
         return game_imgs
-    
+
+
     def update_elo(self, frame_idx):
         self.agent.model.eval()
         prev_board = self.tournament.leaderboard.clone()
@@ -380,6 +408,7 @@ class DqnTrainer:
         prev_board['self'] = elos['self'] # only update self elo
         self.tournament.leaderboard = prev_board
         self.agent.model.train()
+
 
     def checkpoint(self, frame_idx):
         #self.update_elo(frame_idx)
