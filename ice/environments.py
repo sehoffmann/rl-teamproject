@@ -163,12 +163,11 @@ class PreprocessWrapper(gym.ObservationWrapper):
 
     def __init__(self, env, normalize_images=True):
         super().__init__(env)
-
         self.normalize_images = normalize_images
 
 
     def observation(self, obs):
         if self.normalize_images:
             obs = obs.astype(np.float32) / 255.0
-        return obs
+        return obs.astype(np.float32)
         

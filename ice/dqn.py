@@ -1,10 +1,8 @@
 import copy
-import itertools
 
 import torch
 import torch.nn.functional as F
 import numpy as np
-import wandb
 
 from decay import EpsilonDecay
 
@@ -246,7 +244,6 @@ class DqnTrainer:
         self.tracker = Tracker()
         self.last_update = 0
 
-
         if False:  # TODO
             self.tournament = HockeyTournamentEvaluation()
             self.tournament.add_agent('self', self.agent)
@@ -385,11 +382,11 @@ class DqnTrainer:
         state = self.reset_env()
         game_imgs = []
         for _ in range(num_games):
-            imgs = [self.env.render(mode='rgb_array')]
+            imgs = [self.env.render()]
             while True:
                 action = self.agent.select_action(state)
                 state, _, done, truncated, _ = self.step(action)
-                imgs.append(self.env.render(mode='rgb_array'))
+                imgs.append(self.env.render())
                 if done or truncated:
                     state = self.reset_env()
                     break
@@ -415,5 +412,6 @@ class DqnTrainer:
         name = f'frame_{frame_idx:010d}'
         self.agent.save_model(self.model_dir / f'{name}.pt')
         
-        images = self.rollout(4)
-        plotting.save_games(self.model_dir / f'{name}.gif', images)
+        n_games = 4
+        images = self.rollout(n_games)
+        plotting.save_games(self.model_dir / f'{name}.gif', images, duration=6*n_games)

@@ -115,7 +115,7 @@ def create_environment(config):
         env = IcyHockey(reward_shaping=config['reward_shaping'])
     else:
         #env = make_atari_env(config['env'], n_envs=1)
-        env = gym.make(config['env'])
+        env = gym.make(config['env'], render_mode='rgb_array')
         env = AtariWrapper(env)
         env = PreprocessWrapper(env)
 
