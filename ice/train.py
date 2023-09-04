@@ -131,9 +131,6 @@ def train(config, model_dir, device):
 
     if config['frame_stacks'] > 1:
         env = VecFrameStack(env, config['frame_stacks'])
-
-    
-    print(env.observation_space)
     
     # Replay Buffer
     if not config['priority_rp']:
@@ -288,8 +285,8 @@ def main():
     # Other
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--batch-size', type=int, default=512)
-    parser.add_argument('--warmup-frames', type=int, default=500_000)
-    parser.add_argument('--buffer-size', type=int, default=500_000)
+    parser.add_argument('--warmup-frames', type=int, default=1_000_000)
+    parser.add_argument('--buffer-size', type=int, default=1_000_000)
     parser.add_argument('--update-frequency', type=int, default=2)
     parser.add_argument('--eps-decay', type=int, default=1_000_000)
     parser.add_argument('--beta-decay', type=int, default=2_000_000)
